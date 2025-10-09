@@ -318,52 +318,23 @@
     </div>
 
     <script type="module">
-        // Placeholder JavaScript for lobby functionality
-        console.log("VS Lobby loaded");
+        import { LobbyManager } from '../core/systems_vs/lobby_manager.js';
 
-        // Back to menu
-        document.getElementById('btn-back').addEventListener('click', () => {
-            window.location.href = '../index.html';
+        // Initialize lobby manager
+        const lobbyManager = new LobbyManager();
+
+        // Start lobby when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            lobbyManager.initialize().catch(error => {
+                console.error('Failed to initialize lobby:', error);
+                alert('Failed to connect to server. Please refresh and try again.');
+            });
         });
 
-        // Ready button toggle
-        let isReady = false;
-        document.getElementById('btn-ready').addEventListener('click', function() {
-            isReady = !isReady;
-            this.textContent = isReady ? 'Not Ready' : 'Ready';
-            this.style.backgroundColor = isReady ? '#e67e22' : '#2ecc71';
-            console.log('Ready status:', isReady);
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            lobbyManager.disconnect();
         });
-
-        // Chat functionality
-        const chatInput = document.getElementById('chat-input');
-        const chatSend = document.getElementById('chat-send');
-        const chatMessages = document.getElementById('chat-messages');
-
-        function sendMessage() {
-            const message = chatInput.value.trim();
-            if (message) {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'chat-message';
-                messageDiv.innerHTML = `<span class="username">You:</span> ${message}`;
-                chatMessages.appendChild(messageDiv);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-                chatInput.value = '';
-                console.log('Message sent:', message);
-            }
-        }
-
-        chatSend.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-
-        // Generate random room code
-        const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-        document.getElementById('room-code').textContent = roomCode;
-        console.log('Room code generated:', roomCode);
     </script>
 </body>
 

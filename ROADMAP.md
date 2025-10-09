@@ -113,6 +113,26 @@
   - Rate limit avec erreur "Rate limit exceeded"
 - Tests: ✅ Server rebuild OK, ✅ Chat sécurisé
 
+**Phase 3 Days 11-13 Status**: ✅ COMPLET
+- Frontend lobby complet avec WebSocket:
+  - ✅ WebSocketClient real implementation (connection, auto-reconnect)
+  - ✅ LobbyManager UI controller (player slots, chat, timers)
+  - ✅ Message handlers: lobby_joined, room_state, player_joined/left, player_ready, chat_message
+  - ✅ Timer display: wait_timer_started, countdown_started/tick/cancelled
+  - ✅ Game starting transition vers vs_game.html
+- Fichiers créés:
+  - [core/systems_vs/lobby_manager.js](core/systems_vs/lobby_manager.js) - UI controller
+- Fichiers modifiés:
+  - [core/network/websocket_client.js](core/network/websocket_client.js) - Real WebSocket
+  - [views/vs_lobby.html](views/vs_lobby.html) - Import LobbyManager
+- Features:
+  - Player name prompt (max 12 chars)
+  - Dynamic player slots (4 max, host icon, ready status)
+  - Chat avec system messages (join/leave)
+  - Ready toggle button
+  - Countdown display avec redirection auto
+- Tests: ✅ Lobby fonctionne avec WebSocket backend
+
 **Modifications apportées**:
 ```javascript
 // Lignes 295-413: Section MODE SELECTION
@@ -174,19 +194,19 @@
 **Goal**: VS lobby and game pages with UI
 
 ### Days 11-13: Lobby UI & System
-- [ ] Complete `views/vs_lobby.html` HTML/CSS
-- [ ] Implement `LobbyManager` class in `core/systems_vs/lobby_system.js`
-- [ ] Connect to WebSocket server (`ws://localhost:8080/ws`)
-- [ ] Handle `lobby_joined` message
-- [ ] Handle `player_joined` / `player_left` messages
-- [ ] Update player counter (1/4, 2/4, etc.)
-- [ ] Update player list dynamically
-- [ ] Display timers (20s wait, 10s countdown)
-- [ ] Implement chat input (Enter to send)
-- [ ] Display chat messages with nickname
-- [ ] Add "Back" button to return to main menu
-- [ ] Test full lobby flow with 4 players
-- [ ] Commit: "Frontend: VS lobby complete"
+- [x] Complete `views/vs_lobby.html` HTML/CSS
+- [x] Implement `LobbyManager` class in `core/systems_vs/lobby_manager.js`
+- [x] Connect to WebSocket server (`ws://localhost:8080/ws`)
+- [x] Handle `lobby_joined` message
+- [x] Handle `player_joined` / `player_left` messages
+- [x] Update player counter (1/4, 2/4, etc.)
+- [x] Update player list dynamically
+- [x] Display timers (20s wait, 10s countdown)
+- [x] Implement chat input (Enter to send)
+- [x] Display chat messages with nickname
+- [x] Add "Back" button to return to main menu
+- [x] Test full lobby flow with 4 players
+- [x] Commit: "Frontend: VS lobby complete"
 
 ### Days 14-15: Game Page Setup
 - [ ] Create `views/vs_game.html` structure
