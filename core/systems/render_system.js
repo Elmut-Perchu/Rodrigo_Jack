@@ -12,8 +12,27 @@ export class Render extends System {
             const visual = entity.getComponent('visual');
             const position = entity.getComponent('position');
             const hitbox = entity.getComponent('circle_hitbox');
-            if (!position && !visual || visual.div.parentElement) return;
 
+            // Check required components first
+            if (!position || !visual) return;
+
+            // If already in DOM, update position if needed
+            if (visual.div.parentElement) {
+                // Only update if position changed (optimization)
+                const currentLeft = parseInt(visual.div.style.left) || 0;
+                const currentTop = parseInt(visual.div.style.top) || 0;
+                if (currentLeft !== position.x || currentTop !== position.y) {
+                    visual.div.style.left = `${position.x}px`;
+                    visual.div.style.top = `${position.y}px`;
+                    // Debug: Log first position update
+                    if (currentLeft === 0 && currentTop === 0 && (position.x !== 0 || position.y !== 0)) {
+                        console.log(`[RenderSystem] Updated position for entity ${entity.uuid.substring(0, 8)}: (${currentLeft},${currentTop}) → (${position.x},${position.y})`);
+                    }
+                }
+                return;
+            }
+
+            // Skip if already in DOM via UUID check
             if (document.querySelector(`[uuid="${entity.uuid}"]`)) return;
 
             // Create and style the entity's div

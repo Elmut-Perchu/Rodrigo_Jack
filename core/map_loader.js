@@ -103,7 +103,9 @@ export class MapLoader {
                 const mapWidth = mapData.metadata.width * TILE_CONSTANTS.SCALED_SIZE;
                 const mapHeight = mapData.metadata.height * TILE_CONSTANTS.SCALED_SIZE;
 
-                gameWorld.style.backgroundImage = `url(assets/${mapData.background.path})`;
+                // Detect if we're in views/ subdirectory
+                const basePath = window.location.pathname.includes('/views/') ? '../assets/' : 'assets/';
+                gameWorld.style.backgroundImage = `url(${basePath}${mapData.background.path})`;
                 gameWorld.style.backgroundSize = `${mapWidth}px ${mapHeight}px`;
                 gameWorld.style.backgroundPosition = '0 0';
                 gameWorld.style.backgroundRepeat = 'no-repeat';
@@ -113,16 +115,33 @@ export class MapLoader {
         }
         // Charger les tiles
         if (mapData.tiles) {
-            mapData.tiles.forEach(tile => {
-                const tileEntity = createTile(
-                    tile.x,
-                    tile.y,
-                    Math.floor(tile.tx / TILE_CONSTANTS.BASE_SIZE),
-                    Math.floor(tile.ty / TILE_CONSTANTS.BASE_SIZE),
-                    { solid: true }
-                );
-                this.game.addEntity(tileEntity);
-            });
+            // Check if tiles are in string format (VS mode) or object format (Adventure mode)
+            if (Array.isArray(mapData.tiles) && typeof mapData.tiles[0] === 'string') {
+                // VS mode: parse string grid format
+                mapData.tiles.forEach((row, y) => {
+                    for (let x = 0; x < row.length; x++) {
+                        const char = row[x];
+                        if (char === '1') {
+                            // Create solid tile
+                            const tileEntity = createTile(x, y, 0, 0, { solid: true });
+                            this.game.addEntity(tileEntity);
+                        }
+                        // '0' = empty space, no tile
+                    }
+                });
+            } else {
+                // Adventure mode: object format with x, y, tx, ty
+                mapData.tiles.forEach(tile => {
+                    const tileEntity = createTile(
+                        tile.x,
+                        tile.y,
+                        Math.floor(tile.tx / TILE_CONSTANTS.BASE_SIZE),
+                        Math.floor(tile.ty / TILE_CONSTANTS.BASE_SIZE),
+                        { solid: true }
+                    );
+                    this.game.addEntity(tileEntity);
+                });
+            }
         }
 
         // Créer le joueur au spawn point (maintenant en indices)

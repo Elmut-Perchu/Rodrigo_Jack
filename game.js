@@ -1,7 +1,7 @@
 import { Gravity } from './core/systems/gravity_system.js';
 import { Input } from './core/systems/input_system.js';
 import { Movement } from './core/systems/movement_system.js';
-import { Render } from './core/systems/render_system.js';
+import { Render } from './core/systems/render_system.js?v=3';
 import { Collision } from './core/systems/collision_system.js';
 import { Collectible } from './core/systems/collectible_system.js';
 import { Animation } from './core/systems/animation_system.js';
@@ -32,7 +32,7 @@ import { ArrowImpactSystem } from './core/systems/arrow_impact_system.js';
 import { ArrowPickupSystem } from './core/systems/arrow_pickup_system.js';
 
 export class Game {
-    constructor(container) {
+    constructor(container, mode = 'adventure') {
         this.entities = new Set();
         this.systems = new Set();
         this.lastTime = performance.now();
@@ -41,6 +41,7 @@ export class Game {
         this.menu = document.createElement('div');
         this.mapLoader = new MapLoader(this);
         this.eventBus = new EventBus();
+        this.mode = mode; // Set mode early for conditional initialization
         this.difficulty = 'easy'; // Mode par défaut
         this.levelState = {
             deadEnemies: new Set(), // UUID des ennemis morts
@@ -57,11 +58,12 @@ export class Game {
         this.cutsceneSystem = null; // Référence au système de cinématiques
         this.skipIntro = false; // Option pour sauter l'intro (à des fins de test)
 
-        // Créer le menu principal
-        this.mainMenu = createMainMenu(this, this.container);
-
-        // Ajouter un bouton pour sauter l'intro
-        this.addSkipIntroButton();
+        // Créer le menu principal SEULEMENT en mode Adventure
+        if (this.mode !== 'vs') {
+            this.mainMenu = createMainMenu(this, this.container);
+            // Ajouter un bouton pour sauter l'intro
+            this.addSkipIntroButton();
+        }
 
         window.addEventListener('keydown', (e) => {
             // Touche 'P' pour pause (majuscule ou minuscule)
@@ -95,6 +97,9 @@ export class Game {
     }
 
     addSkipIntroButton() {
+        // Skip in VS mode (no mainMenu)
+        if (this.mode === 'vs' || !this.mainMenu) return;
+
         // Ajouter un bouton dans le menu principal pour activer/désactiver l'intro
         const skipIntroCheckbox = document.createElement('div');
         skipIntroCheckbox.style.display = 'flex';
@@ -178,11 +183,12 @@ export class Game {
         const { PerformanceSystem } = await import('./core/systems/performance_system.js');
         this.addSystem(new PerformanceSystem(this));
 
-        // Modifier le comportement du bouton Start dans le menu principal
-        this.setupStartButton();
-
-        // Charger la map mais ne pas la démarrer (la cinématique d'intro le fera)
-        await this.preloadMap('./assets/maps/map1.json');
+        // Modifier le comportement du bouton Start dans le menu principal (Adventure only)
+        if (this.mode !== 'vs') {
+            this.setupStartButton();
+            // Charger la map mais ne pas la démarrer (la cinématique d'intro le fera)
+            await this.preloadMap('./assets/maps/map1.json');
+        }
 
         console.log("Game initialization completed");
     }
@@ -203,6 +209,9 @@ export class Game {
     }
 
     setupStartButton() {
+        // Skip in VS mode (no mainMenu)
+        if (this.mode === 'vs' || !this.mainMenu) return;
+
         // Trouver le bouton de démarrage dans le menu principal
         const startBtn = this.mainMenu.querySelector('button');
         if (!startBtn) return;
@@ -362,6 +371,12 @@ export class Game {
 
     handlePlayerDeath() {
         console.log(`Gestion de la mort du joueur en mode ${this.difficulty}`);
+
+        // Skip Adventure-specific logic in VS mode
+        if (this.mode === 'vs') {
+            console.log('[Game] Player death in VS mode - handled by VS match system');
+            return;
+        }
 
         // Réinitialiser le compteur d'ennemis tués
         this.globalStats.enemiesKilled = 0;
