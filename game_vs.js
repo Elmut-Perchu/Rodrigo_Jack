@@ -39,17 +39,86 @@ export class GameVS extends Game {
      * @param {string} roomCode - Room identifier
      * @param {boolean} isHost - Whether this player is the host
      */
-    initializeVSMode(roomCode, isHost = false) {
+    async initializeVSMode(roomCode, isHost = false) {
         this.roomCode = roomCode;
         this.isHost = isHost;
 
         console.log(`[GameVS] Initializing VS mode - Room: ${roomCode}, Host: ${isHost}`);
 
-        // Placeholder: Will connect to WebSocket server in Phase 2
-        console.log('[GameVS] Network initialization will be implemented in Phase 2');
+        // Disable Adventure-specific features
+        this.disableAdventureFeatures();
 
-        // Placeholder: Will setup VS-specific systems in Phase 2
-        console.log('[GameVS] VS systems will be added in Phase 2');
+        // Load VS battle map (placeholder - will implement in Phase 4)
+        await this.loadVSMap();
+
+        console.log('[GameVS] VS mode initialized');
+    }
+
+    /**
+     * Disable Adventure mode features
+     */
+    disableAdventureFeatures() {
+        console.log('[GameVS] Disabling Adventure features...');
+
+        // Disable cutscenes
+        const cutsceneSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'CutsceneSystem'
+        );
+        if (cutsceneSystem) {
+            this.systems.delete(cutsceneSystem);
+            console.log('[GameVS] Cutscene system disabled');
+        }
+
+        // Disable collectible/portal systems (players can't progress levels)
+        const collectibleSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'Collectible'
+        );
+        if (collectibleSystem) {
+            this.systems.delete(collectibleSystem);
+            console.log('[GameVS] Collectible system disabled');
+        }
+
+        // Disable score system (VS has own scoring)
+        const scoreSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'ScoreSystem'
+        );
+        if (scoreSystem) {
+            this.systems.delete(scoreSystem);
+            console.log('[GameVS] Score system disabled');
+        }
+
+        // Clear level state (not needed in VS)
+        this.levelState = null;
+        this.globalStats = null;
+
+        console.log('[GameVS] Adventure features disabled');
+    }
+
+    /**
+     * Load VS battle map
+     */
+    async loadVSMap() {
+        console.log('[GameVS] Loading VS battle map...');
+
+        // Placeholder: Will load pvp_arena1.json in Phase 4
+        // For now, just log that we would load it
+        console.log('[GameVS] VS map loading will be implemented in Phase 4');
+
+        // Create basic battle arena placeholder
+        this.createPlaceholderArena();
+    }
+
+    /**
+     * Create placeholder battle arena
+     */
+    createPlaceholderArena() {
+        console.log('[GameVS] Creating placeholder arena...');
+
+        // This will be replaced with actual map loading in Phase 4
+        // For now, just setup basic game state
+        this.paused = false;
+        this.matchStarted = true;
+        this.playersAlive = 1; // Will be updated when players connect
     }
 
     /**
