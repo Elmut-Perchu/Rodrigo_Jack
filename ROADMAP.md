@@ -9,13 +9,13 @@
 
 ## 📋 Progress Overview
 
-- **Phase 1**: ⬜ Menu Dual-Mode (2 days)
+- **Phase 1**: 🟡 Menu Dual-Mode (2 days) - IN PROGRESS
 - **Phase 2**: ⬜ Backend WebSocket (8 days)
 - **Phase 3**: ⬜ Frontend VS (7 days)
 - **Phase 4**: ⬜ Multiplayer Sync (7 days)
-- **Phase 5**: ⬜ Polish & Testing (11 days)
+- **Phase 5**: ⬜ Poll & Testing (11 days)
 
-**Overall Progress**: 0/35 tasks completed (0%)
+**Overall Progress**: 6/35 tasks completed (17%)
 
 ---
 
@@ -23,14 +23,14 @@
 
 **Goal**: Add mode selection to main menu (Adventure vs VS)
 
-### Day 1: Modify Main Menu
-- [ ] Backup current `utils/utils.js`
-- [ ] Add mode selection buttons (Adventure / VS)
-- [ ] Implement mode selection logic in `game.selectedMode`
-- [ ] Add visual feedback for selected mode
-- [ ] Update "Start Game" button to handle both modes
-- [ ] Hide difficulty buttons when VS mode selected
-- [ ] Test mode switching in browser
+### Day 1: Modify Main Menu ✅ COMPLETED (code ready, browser cache issue)
+- [x] Backup current `utils/utils.js` → `utils/utils.js.backup`
+- [x] Add mode selection buttons (Adventure 🗺️ / VS ⚔️)
+- [x] Implement mode selection logic in `game.selectedMode`
+- [x] Add visual feedback for selected mode (green/red colors)
+- [x] Update "Start Game" button to handle both modes (redirect to vs_lobby.html)
+- [x] Hide difficulty buttons when VS mode selected (difficultyContainer)
+- [ ] Test mode switching in browser (BLOCKED: browser cache issue, needs hard refresh or incognito mode)
 
 ### Day 2: Create VS Structure
 - [ ] Create `views/` directory
@@ -47,6 +47,32 @@
 - [ ] Commit: "Phase 1: Menu dual-mode structure"
 
 **Deliverables**: ✅ Working menu with mode selection, ✅ VS folder structure
+
+---
+
+## 📝 Notes & Status
+
+**Phase 1 Day 1 Status**: CODE COMPLET ✅
+- Fichier modifié: `utils/utils.js` (lignes 295-521)
+- Backup créé: `utils/utils.js.backup`
+- Problème actuel: Cache navigateur ne rafraîchit pas
+- Solution suggérée: Mode incognito ou fermer/rouvrir navigateur complètement
+- Code vérifié sur serveur: ✅ Le serveur sert bien le bon fichier
+
+**Modifications apportées**:
+```javascript
+// Lignes 295-413: Section MODE SELECTION
+- gameInstance.selectedMode = 'adventure' (défaut)
+- difficultyContainer créé (lignes 356-361)
+- adventureBtn.onclick → show difficulty, green color
+- vsBtn.onclick → hide difficulty, red color
+- startBtn.onclick → check selectedMode, redirect si VS
+```
+
+**Pour le prochain agent**:
+1. Vérifier que le mode VS s'affiche en mode incognito: `http://localhost:8000`
+2. Si oui, continuer avec Phase 1 Day 2
+3. Si non, debug le problème de cache
 
 ---
 

@@ -284,141 +284,15 @@ export function createMainMenu(gameInstance, container) {
 
     // Titre
     const title = document.createElement('h1');
-    title.textContent = 'Rodrigo Jack et les 6 talismans';
+    title.textContent = 'Rodrigo Jack et les 5 (non, 6) talismans';
     title.style.color = 'black';
     title.style.textAlign = 'center';
-    title.style.fontSize = '1.8rem';
+    title.style.fontSize = '2rem';
     title.style.marginBottom = '1rem';
     title.style.fontFamily = "'Press Start 2P', sans-serif";
     menu.appendChild(title);
 
-    // ========== MODE SELECTION ==========
-
-    // Titre section mode
-    const modeTitle = document.createElement('h2');
-    modeTitle.textContent = 'Select Game Mode';
-    modeTitle.style.color = 'black';
-    modeTitle.style.textAlign = 'center';
-    modeTitle.style.fontSize = '1.2rem';
-    modeTitle.style.marginTop = '1rem';
-    modeTitle.style.fontFamily = "'Press Start 2P', sans-serif";
-    menu.appendChild(modeTitle);
-
-    // Conteneur pour les boutons de mode (horizontal)
-    const modeButtonsContainer = document.createElement('div');
-    modeButtonsContainer.style.display = 'flex';
-    modeButtonsContainer.style.gap = '1rem';
-    modeButtonsContainer.style.justifyContent = 'center';
-
-    // Bouton Adventure Mode
-    const adventureBtn = document.createElement('button');
-    adventureBtn.innerHTML = `
-        <div style="text-align: center;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🗺️</div>
-            <div>ADVENTURE</div>
-            <div style="font-size: 0.7rem; margin-top: 0.3rem;">Solo Story Mode</div>
-        </div>
-    `;
-    adventureBtn.style.padding = '1.5rem 1rem';
-    adventureBtn.style.border = '3px solid black';
-    adventureBtn.style.borderRadius = '10px';
-    adventureBtn.style.backgroundColor = '#4CAF50'; // Sélectionné par défaut
-    adventureBtn.style.color = 'black';
-    adventureBtn.style.cursor = 'pointer';
-    adventureBtn.style.fontSize = '1rem';
-    adventureBtn.style.fontFamily = "'Press Start 2P', sans-serif";
-    adventureBtn.style.width = '180px';
-    adventureBtn.style.transition = 'all 0.3s';
-
-    // Bouton VS Mode
-    const vsBtn = document.createElement('button');
-    vsBtn.innerHTML = `
-        <div style="text-align: center;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚔️</div>
-            <div>VS MODE</div>
-            <div style="font-size: 0.7rem; margin-top: 0.3rem;">2-4 Players Battle</div>
-        </div>
-    `;
-    vsBtn.style.padding = '1.5rem 1rem';
-    vsBtn.style.border = '3px solid black';
-    vsBtn.style.borderRadius = '10px';
-    vsBtn.style.backgroundColor = '#4A4A4A'; // Non sélectionné
-    vsBtn.style.color = 'white';
-    vsBtn.style.cursor = 'pointer';
-    vsBtn.style.fontSize = '1rem';
-    vsBtn.style.fontFamily = "'Press Start 2P', sans-serif";
-    vsBtn.style.width = '180px';
-    vsBtn.style.transition = 'all 0.3s';
-
-    // Variable pour tracker le mode sélectionné
-    gameInstance.selectedMode = 'adventure';
-
-    // Créer le conteneur de difficulté en avance (sera utilisé après le Start button)
-    const difficultyContainer = document.createElement('div');
-    difficultyContainer.style.display = 'flex'; // Visible par défaut (mode Adventure)
-    difficultyContainer.style.gap = '0.5rem';
-    difficultyContainer.style.justifyContent = 'center';
-    difficultyContainer.style.flexWrap = 'wrap';
-
-    // Gestion des clics sur les boutons de mode
-    adventureBtn.onclick = () => {
-        gameInstance.selectedMode = 'adventure';
-        adventureBtn.style.backgroundColor = '#4CAF50';
-        adventureBtn.style.color = 'black';
-        vsBtn.style.backgroundColor = '#4A4A4A';
-        vsBtn.style.color = 'white';
-        // Afficher difficulté
-        difficultyContainer.style.display = 'flex';
-        console.log("Mode Adventure sélectionné");
-    };
-
-    vsBtn.onclick = () => {
-        gameInstance.selectedMode = 'vs';
-        vsBtn.style.backgroundColor = '#E74C3C'; // Rouge pour VS
-        vsBtn.style.color = 'white';
-        adventureBtn.style.backgroundColor = '#4A4A4A';
-        adventureBtn.style.color = 'white';
-        // Cacher difficulté
-        difficultyContainer.style.display = 'none';
-        console.log("Mode VS sélectionné");
-    };
-
-    // Hover effects
-    adventureBtn.onmouseover = () => {
-        if (gameInstance.selectedMode !== 'adventure') {
-            adventureBtn.style.backgroundColor = '#5CBF60';
-        }
-    };
-    adventureBtn.onmouseout = () => {
-        if (gameInstance.selectedMode !== 'adventure') {
-            adventureBtn.style.backgroundColor = '#4A4A4A';
-        }
-    };
-
-    vsBtn.onmouseover = () => {
-        if (gameInstance.selectedMode !== 'vs') {
-            vsBtn.style.backgroundColor = '#F15C4C';
-        }
-    };
-    vsBtn.onmouseout = () => {
-        if (gameInstance.selectedMode !== 'vs') {
-            vsBtn.style.backgroundColor = '#4A4A4A';
-        }
-    };
-
-    modeButtonsContainer.appendChild(adventureBtn);
-    modeButtonsContainer.appendChild(vsBtn);
-    menu.appendChild(modeButtonsContainer);
-
-    // ========== END MODE SELECTION ==========
-
-    // Séparateur
-    const hr = document.createElement('hr');
-    hr.style.width = '100%';
-    hr.style.margin = '1rem 0';
-    menu.appendChild(hr);
-
-    // Bouton Start (modifié pour gérer les 2 modes)
+    // Bouton Start
     const startBtn = document.createElement('button');
     startBtn.textContent = 'Start Game';
     startBtn.style.padding = '0.8rem 1.5rem';
@@ -433,24 +307,22 @@ export function createMainMenu(gameInstance, container) {
     startBtn.onmouseover = () => startBtn.style.backgroundColor = '#45a049';
     startBtn.onmouseout = () => startBtn.style.backgroundColor = '#4CAF50';
     startBtn.onclick = () => {
-        if (gameInstance.selectedMode === 'adventure') {
-            // Mode Adventure (comportement actuel)
-            menuContainer.style.display = 'none';
-            gameInstance.paused = false;
+        // Masquer le menu
+        menuContainer.style.display = 'none';
 
-            // Musique map 1
-            setTimeout(() => {
-                const audioSystem = Array.from(gameInstance.systems).find(
-                    system => system.constructor.name === 'AudioSystem');
-                if (audioSystem) {
-                    console.log("Démarrage de la musique de map 1 via le bouton Start");
-                    audioSystem.startMapMusic(1);
-                }
-            }, 500);
-        } else if (gameInstance.selectedMode === 'vs') {
-            // Mode VS → Redirection vers lobby
-            window.location.href = 'views/vs_lobby.html';
-        }
+        // Démarrer le jeu
+        gameInstance.paused = false;
+
+        // Déclencher la musique de la map 1 (avec les nouveaux réglages)
+        setTimeout(() => {
+            const audioSystem = Array.from(gameInstance.systems).find(
+                system => system.constructor.name === 'AudioSystem');
+
+            if (audioSystem) {
+                console.log("Démarrage de la musique de map 1 via le bouton Start");
+                audioSystem.startMapMusic(1);
+            }
+        }, 500);
     };
     menu.appendChild(startBtn);
 
@@ -515,10 +387,9 @@ export function createMainMenu(gameInstance, container) {
         console.log("Mode difficile activé");
     };
 
-    difficultyContainer.appendChild(easyBtn);
-    difficultyContainer.appendChild(mediumBtn);
-    difficultyContainer.appendChild(hardBtn);
-    menu.appendChild(difficultyContainer);
+    menu.appendChild(easyBtn);
+    menu.appendChild(mediumBtn);
+    menu.appendChild(hardBtn);
 
     // Bouton Options - maintenant fonctionnel
     const optionsBtn = document.createElement('button');
