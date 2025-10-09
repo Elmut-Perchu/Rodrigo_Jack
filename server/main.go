@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -31,6 +32,8 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/ws", handleWebSocket)
 	router.HandleFunc("/health", handleHealth)
+	router.HandleFunc("/api/rooms", handleGetRooms).Methods("GET")
+	router.HandleFunc("/api/rooms/{code}", handleGetRoom).Methods("GET")
 
 	// Start server
 	port := ":8080"
@@ -70,4 +73,92 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Handle player messages
 	player.HandleMessages()
+}
+
+// RoomInfo represents room information for API
+type RoomInfo struct {
+	Code        string `json:"code"`
+	PlayerCount int    `json:"playerCount"`
+	MaxPlayers  int    `json:"maxPlayers"`
+	IsGameActive bool   `json:"isGameActive"`
+	HostName    string `json:"hostName"`
+}
+
+// GET /api/rooms - List all available rooms
+func handleGetRooms(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	roomManager.mu.RLock()
+	defer roomManager.mu.RUnlock()
+
+	rooms := make([]RoomInfo, 0)
+	for code, room := range roomManager.Rooms {
+		room.mu.RLock()
+
+		// Only include rooms that are not full and not in game
+		if len(room.Players) < room.MaxPlayers && !room.IsGameActive {
+			hostName := "Unknown"
+			if room.Host != nil {
+				hostName = room.Host.Name
+			}
+
+			rooms = append(rooms, RoomInfo{
+				Code:         code,
+				PlayerCount:  len(room.Players),
+				MaxPlayers:   room.MaxPlayers,
+				IsGameActive: room.IsGameActive,
+				HostName:     hostName,
+			})
+		}
+
+		room.mu.RUnlock()
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"rooms": rooms,
+		"count": len(rooms),
+	})
+
+	log.Printf("[API] Listed %d available rooms", len(rooms))
+}
+
+// GET /api/rooms/{code} - Get specific room info
+func handleGetRoom(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	code := vars["code"]
+
+	roomManager.mu.RLock()
+	room, exists := roomManager.Rooms[code]
+	roomManager.mu.RUnlock()
+
+	if !exists {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Room not found",
+		})
+		return
+	}
+
+	room.mu.RLock()
+	defer room.mu.RUnlock()
+
+	hostName := "Unknown"
+	if room.Host != nil {
+		hostName = room.Host.Name
+	}
+
+	roomInfo := RoomInfo{
+		Code:         code,
+		PlayerCount:  len(room.Players),
+		MaxPlayers:   room.MaxPlayers,
+		IsGameActive: room.IsGameActive,
+		HostName:     hostName,
+	}
+
+	json.NewEncoder(w).Encode(roomInfo)
+	log.Printf("[API] Room info requested: %s", code)
 }
