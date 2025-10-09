@@ -59,13 +59,32 @@ export class LobbyManager {
         // Setup event listeners
         this.setupEventListeners();
 
-        // Generate or get room code
-        this.roomCode = this.generateRoomCode();
+        // Get data from sessionStorage (set by vs_menu.html)
+        const isHost = sessionStorage.getItem('isHost') === 'true';
+        this.playerName = sessionStorage.getItem('playerNickname') || 'Player';
+
+        // Get or generate room code
+        if (isHost) {
+            // Host creates a new room
+            this.roomCode = this.generateRoomCode();
+            this.isHost = true;
+        } else {
+            // Player joins existing room
+            this.roomCode = sessionStorage.getItem('roomCode');
+            if (!this.roomCode) {
+                alert('No room code provided. Redirecting to menu...');
+                window.location.href = 'vs_menu.html';
+                return;
+            }
+            this.isHost = false;
+        }
+
         this.ui.roomCode.textContent = this.roomCode;
 
-        // Get player name (from prompt for now)
-        this.playerName = prompt('Enter your name (max 12 chars):', 'Player') || 'Player';
-        this.playerName = this.playerName.substring(0, 12);
+        // Clear sessionStorage
+        sessionStorage.removeItem('playerNickname');
+        sessionStorage.removeItem('roomCode');
+        sessionStorage.removeItem('isHost');
 
         // Connect to WebSocket
         await this.connect();
@@ -78,7 +97,7 @@ export class LobbyManager {
         // Back button
         this.ui.backButton.addEventListener('click', () => {
             this.disconnect();
-            window.location.href = '../index.html';
+            window.location.href = 'vs_menu.html';
         });
 
         // Ready button

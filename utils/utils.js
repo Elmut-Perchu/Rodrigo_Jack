@@ -449,7 +449,7 @@ export function createMainMenu(gameInstance, container) {
             }, 500);
         } else if (gameInstance.selectedMode === 'vs') {
             // Mode VS → Redirection vers lobby
-            window.location.href = 'views/vs_lobby.html';
+            window.location.href = 'views/vs_menu.html';
         }
     };
     menu.appendChild(startBtn);

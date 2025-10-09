@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="../style.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <title>VS Mode - Menu</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Press Start 2P', sans-serif;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .vs-menu-container {
+            width: 90%;
+            max-width: 600px;
+            background-color: rgba(44, 62, 80, 0.9);
+            border: 4px solid #ecf0f1;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .vs-menu-header h1 {
+            font-size: 2rem;
+            margin: 0 0 1rem 0;
+            color: #e74c3c;
+        }
+
+        .vs-menu-header p {
+            font-size: 0.8rem;
+            color: #95a5a6;
+            margin-bottom: 2rem;
+        }
+
+        .input-section {
+            margin: 2rem 0;
+            display: none;
+        }
+
+        .input-section.active {
+            display: block;
+        }
+
+        .input-section label {
+            display: block;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: #ecf0f1;
+        }
+
+        .input-section input {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid #7f8c8d;
+            border-radius: 5px;
+            background-color: rgba(44, 62, 80, 0.8);
+            color: white;
+            font-family: 'Press Start 2P', sans-serif;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+
+        .input-section input::placeholder {
+            color: #95a5a6;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 1.5rem 2rem;
+            border: none;
+            border-radius: 5px;
+            font-family: 'Press Start 2P', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-create {
+            background-color: #2ecc71;
+            color: white;
+        }
+
+        .btn-create:hover {
+            background-color: #27ae60;
+        }
+
+        .btn-join {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .btn-join:hover {
+            background-color: #2980b9;
+        }
+
+        .btn-back {
+            background-color: #95a5a6;
+            color: white;
+        }
+
+        .btn-back:hover {
+            background-color: #7f8c8d;
+        }
+
+        .btn-confirm {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-confirm:hover {
+            background-color: #c0392b;
+        }
+
+        .btn:disabled {
+            background-color: #7f8c8d;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            font-size: 0.7rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="vs-menu-container">
+        <!-- Header -->
+        <div class="vs-menu-header">
+            <h1>⚔️ VS MODE ⚔️</h1>
+            <p>2-4 Players Battle Arena</p>
+        </div>
+
+        <!-- Initial Menu -->
+        <div id="initial-menu">
+            <div class="btn-group">
+                <button class="btn btn-create" id="btn-create">Create Room</button>
+                <button class="btn btn-join" id="btn-join">Join Room</button>
+                <button class="btn btn-back" id="btn-back-main">Back to Main Menu</button>
+            </div>
+        </div>
+
+        <!-- Nickname Input (Create Room) -->
+        <div id="create-section" class="input-section">
+            <label for="nickname-create">Enter Your Nickname:</label>
+            <input type="text" id="nickname-create" placeholder="Enter nickname..." maxlength="15">
+            <p class="error-message" id="error-create">Please enter a nickname (3-15 characters)</p>
+            <div class="btn-group">
+                <button class="btn btn-confirm" id="btn-create-confirm">Create Room</button>
+                <button class="btn btn-back" id="btn-cancel-create">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Join Room Section -->
+        <div id="join-section" class="input-section">
+            <label for="room-code">Enter Room Code:</label>
+            <input type="text" id="room-code" placeholder="XXXX" maxlength="4" style="text-transform: uppercase;">
+            <p class="error-message" id="error-room-code">Please enter a valid 4-character room code</p>
+
+            <label for="nickname-join" style="margin-top: 1.5rem;">Enter Your Nickname:</label>
+            <input type="text" id="nickname-join" placeholder="Enter nickname..." maxlength="15">
+            <p class="error-message" id="error-join">Please enter a nickname (3-15 characters)</p>
+
+            <div class="btn-group">
+                <button class="btn btn-confirm" id="btn-join-confirm">Join Room</button>
+                <button class="btn btn-back" id="btn-cancel-join">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const initialMenu = document.getElementById('initial-menu');
+        const createSection = document.getElementById('create-section');
+        const joinSection = document.getElementById('join-section');
+
+        const btnCreate = document.getElementById('btn-create');
+        const btnJoin = document.getElementById('btn-join');
+        const btnBackMain = document.getElementById('btn-back-main');
+
+        const nicknameCreate = document.getElementById('nickname-create');
+        const btnCreateConfirm = document.getElementById('btn-create-confirm');
+        const btnCancelCreate = document.getElementById('btn-cancel-create');
+        const errorCreate = document.getElementById('error-create');
+
+        const roomCode = document.getElementById('room-code');
+        const nicknameJoin = document.getElementById('nickname-join');
+        const btnJoinConfirm = document.getElementById('btn-join-confirm');
+        const btnCancelJoin = document.getElementById('btn-cancel-join');
+        const errorRoomCode = document.getElementById('error-room-code');
+        const errorJoin = document.getElementById('error-join');
+
+        // Show Create Room Section
+        btnCreate.addEventListener('click', () => {
+            initialMenu.style.display = 'none';
+            createSection.classList.add('active');
+            nicknameCreate.focus();
+        });
+
+        // Show Join Room Section
+        btnJoin.addEventListener('click', () => {
+            initialMenu.style.display = 'none';
+            joinSection.classList.add('active');
+            roomCode.focus();
+        });
+
+        // Back to Main Menu
+        btnBackMain.addEventListener('click', () => {
+            window.location.href = '../index.html';
+        });
+
+        // Cancel Create
+        btnCancelCreate.addEventListener('click', () => {
+            createSection.classList.remove('active');
+            initialMenu.style.display = 'block';
+            nicknameCreate.value = '';
+            errorCreate.classList.remove('show');
+        });
+
+        // Cancel Join
+        btnCancelJoin.addEventListener('click', () => {
+            joinSection.classList.remove('active');
+            initialMenu.style.display = 'block';
+            roomCode.value = '';
+            nicknameJoin.value = '';
+            errorRoomCode.classList.remove('show');
+            errorJoin.classList.remove('show');
+        });
+
+        // Validate nickname
+        function validateNickname(nickname) {
+            return nickname.length >= 3 && nickname.length <= 15;
+        }
+
+        // Validate room code
+        function validateRoomCode(code) {
+            return code.length === 4 && /^[A-Z0-9]{4}$/.test(code);
+        }
+
+        // Create Room
+        btnCreateConfirm.addEventListener('click', () => {
+            const nickname = nicknameCreate.value.trim();
+
+            if (!validateNickname(nickname)) {
+                errorCreate.classList.add('show');
+                return;
+            }
+
+            // Store nickname in sessionStorage
+            sessionStorage.setItem('playerNickname', nickname);
+            sessionStorage.setItem('isHost', 'true');
+
+            // Redirect to lobby
+            window.location.href = 'vs_lobby.html';
+        });
+
+        // Join Room
+        btnJoinConfirm.addEventListener('click', () => {
+            const code = roomCode.value.trim().toUpperCase();
+            const nickname = nicknameJoin.value.trim();
+
+            let hasError = false;
+
+            if (!validateRoomCode(code)) {
+                errorRoomCode.classList.add('show');
+                hasError = true;
+            } else {
+                errorRoomCode.classList.remove('show');
+            }
+
+            if (!validateNickname(nickname)) {
+                errorJoin.classList.add('show');
+                hasError = true;
+            } else {
+                errorJoin.classList.remove('show');
+            }
+
+            if (hasError) return;
+
+            // Store nickname and room code in sessionStorage
+            sessionStorage.setItem('playerNickname', nickname);
+            sessionStorage.setItem('roomCode', code);
+            sessionStorage.setItem('isHost', 'false');
+
+            // Redirect to lobby
+            window.location.href = 'vs_lobby.html';
+        });
+
+        // Enter key support
+        nicknameCreate.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') btnCreateConfirm.click();
+        });
+
+        roomCode.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') nicknameJoin.focus();
+        });
+
+        nicknameJoin.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') btnJoinConfirm.click();
+        });
+
+        // Auto-uppercase room code
+        roomCode.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+    </script>
+</body>
+
+</html>
