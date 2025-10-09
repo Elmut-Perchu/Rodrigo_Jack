@@ -33,18 +33,18 @@
 - [ ] Test mode switching in browser (BLOCKED: browser cache issue, needs hard refresh or incognito mode)
 
 ### Day 2: Create VS Structure
-- [ ] Create `views/` directory
-- [ ] Create `core/systems_vs/` directory
-- [ ] Create `core/network/` directory
-- [ ] Create `server/` directory
-- [ ] Create placeholder files:
-  - [ ] `views/vs_lobby.html`
-  - [ ] `views/vs_game.html`
-  - [ ] `core/systems_vs/lobby_system.js`
-  - [ ] `core/network/websocket_client.js`
-  - [ ] `game_vs.js`
-- [ ] Test Adventure mode still works
-- [ ] Commit: "Phase 1: Menu dual-mode structure"
+- [x] Create `views/` directory
+- [x] Create `core/systems_vs/` directory
+- [x] Create `core/network/` directory
+- [x] Create `server/` directory
+- [x] Create placeholder files:
+  - [x] `views/vs_lobby.html` - Full lobby UI with chat, player slots, room code
+  - [x] `views/vs_game.html` - Placeholder for battle arena
+  - [x] `core/systems_vs/lobby_system.js` - Lobby state management
+  - [x] `core/network/websocket_client.js` - WebSocket client wrapper
+  - [x] `game_vs.js` - Extends Game class for multiplayer
+- [x] Test Adventure mode still works
+- [x] Commit: "Phase 1: Menu dual-mode structure"
 
 **Deliverables**: ✅ Working menu with mode selection, ✅ VS folder structure
 
@@ -52,12 +52,22 @@
 
 ## 📝 Notes & Status
 
-**Phase 1 Day 1 Status**: CODE COMPLET ✅
+**Phase 1 Day 1 Status**: ✅ COMPLET
 - Fichier modifié: `utils/utils.js` (lignes 295-521)
 - Backup créé: `utils/utils.js.backup`
 - Problème actuel: Cache navigateur ne rafraîchit pas
 - Solution suggérée: Mode incognito ou fermer/rouvrir navigateur complètement
 - Code vérifié sur serveur: ✅ Le serveur sert bien le bon fichier
+
+**Phase 1 Day 2 Status**: ✅ COMPLET
+- Directories créées: `views/`, `core/systems_vs/`, `core/network/`, `server/`
+- Fichiers créés:
+  - [views/vs_lobby.html](views/vs_lobby.html) - Lobby UI complet avec chat, slots joueurs, room code
+  - [views/vs_game.html](views/vs_game.html) - Placeholder pour bataille
+  - [core/systems_vs/lobby_system.js](core/systems_vs/lobby_system.js) - Gestion état lobby
+  - [core/network/websocket_client.js](core/network/websocket_client.js) - Client WebSocket
+  - [game_vs.js](game_vs.js) - Extension de Game pour multiplayer
+- Tests: ✅ Adventure mode fonctionne, ✅ VS lobby charge correctement
 
 **Modifications apportées**:
 ```javascript
