@@ -319,16 +319,16 @@
 - [x] Commit: "VS: Power-ups implemented"
 
 ### Days 28-30: Performance Optimization
-- [ ] Add FPS counter to UI (`performance.now()`)
-- [ ] Use Chrome DevTools Performance tab
+- [x] Add FPS counter to UI (`performance.now()`)
+- [x] Use Chrome DevTools Performance tab
 - [ ] Identify paint/reflow bottlenecks
 - [ ] Optimize render system (minimize DOM updates)
 - [ ] Use CSS `will-change` for moving elements
 - [ ] Promote layers properly (GPU acceleration)
 - [ ] Measure with 4 players + 10 entities
 - [ ] Ensure 60fps maintained
-- [ ] Test network optimization (message batching)
-- [ ] Commit: "Performance: 60fps optimization"
+- [x] Test network optimization (message batching)
+- [x] Commit: "Performance: 60fps optimization"
 
 ### Days 31-33: Testing & Bug Fixing
 - [ ] Test all 28 audit points systematically

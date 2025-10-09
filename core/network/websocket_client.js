@@ -15,6 +15,13 @@ export class WebSocketClient {
         this.messageHandlers = new Map();
         this.roomCode = null;
         this.playerName = null;
+
+        // Message batching for performance
+        this.batchEnabled = true;
+        this.batchQueue = [];
+        this.batchInterval = 16; // ~60fps (16ms)
+        this.batchTimer = null;
+        this.connected = false;
     }
 
     /**
@@ -36,12 +43,18 @@ export class WebSocketClient {
                 this.ws.onopen = () => {
                     console.log('[WebSocketClient] Connected successfully');
                     this.reconnectAttempts = 0;
+                    this.connected = true;
 
-                    // Send lobby_join message
+                    // Start batch timer
+                    if (this.batchEnabled) {
+                        this.startBatchTimer();
+                    }
+
+                    // Send lobby_join message (immediate, not batched)
                     this.send('lobby_join', {
                         roomCode: this.roomCode,
                         playerName: this.playerName
-                    });
+                    }, false); // Don't batch
 
                     resolve({ success: true });
                 };
@@ -64,9 +77,19 @@ export class WebSocketClient {
      * Disconnect from server
      */
     disconnect() {
+        // Stop batch timer
+        if (this.batchTimer) {
+            clearInterval(this.batchTimer);
+            this.batchTimer = null;
+        }
+
+        // Flush remaining batched messages
+        this.flushBatch();
+
         if (this.ws) {
             this.ws.close();
             this.ws = null;
+            this.connected = false;
             console.log('[WebSocketClient] Disconnected');
         }
     }
@@ -75,8 +98,9 @@ export class WebSocketClient {
      * Send message to server
      * @param {string} type - Message type
      * @param {Object} data - Message payload
+     * @param {boolean} batch - Whether to batch this message (default: true for player_state)
      */
-    send(type, data) {
+    send(type, data, batch = null) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             console.warn('[WebSocketClient] Cannot send - not connected');
             return false;
@@ -88,9 +112,63 @@ export class WebSocketClient {
             timestamp: Date.now()
         };
 
-        console.log('[WebSocketClient] Sending:', message);
-        this.ws.send(JSON.stringify(message));
-        return true;
+        // Auto-detect batching for player_state messages
+        if (batch === null) {
+            batch = (type === 'player_state') && this.batchEnabled;
+        }
+
+        if (batch && this.batchEnabled) {
+            // Add to batch queue
+            this.batchQueue.push(message);
+            return true;
+        } else {
+            // Send immediately
+            console.log('[WebSocketClient] Sending:', message);
+            this.ws.send(JSON.stringify(message));
+            return true;
+        }
+    }
+
+    /**
+     * Start batch timer
+     * @private
+     */
+    startBatchTimer() {
+        if (this.batchTimer) return;
+
+        this.batchTimer = setInterval(() => {
+            this.flushBatch();
+        }, this.batchInterval);
+
+        console.log('[WebSocketClient] Message batching enabled (interval: ' + this.batchInterval + 'ms)');
+    }
+
+    /**
+     * Flush batched messages
+     * @private
+     */
+    flushBatch() {
+        if (this.batchQueue.length === 0) return;
+
+        // Only keep the latest player_state message (discard older ones)
+        const latestPlayerState = this.batchQueue.filter(m => m.type === 'player_state').pop();
+        const otherMessages = this.batchQueue.filter(m => m.type !== 'player_state');
+
+        // Combine messages
+        const messages = otherMessages;
+        if (latestPlayerState) {
+            messages.push(latestPlayerState);
+        }
+
+        // Send each message
+        for (const message of messages) {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(message));
+            }
+        }
+
+        // Clear queue
+        this.batchQueue = [];
     }
 
     /**

@@ -174,6 +174,10 @@ export class Game {
         this.cutsceneSystem = new CutsceneSystem();
         this.addSystem(this.cutsceneSystem);
 
+        // Ajouter le système de performance
+        const { PerformanceSystem } = await import('./core/systems/performance_system.js');
+        this.addSystem(new PerformanceSystem(this));
+
         // Modifier le comportement du bouton Start dans le menu principal
         this.setupStartButton();
 
