@@ -100,25 +100,25 @@ export class GameVS extends Game {
     async loadVSMap() {
         console.log('[GameVS] Loading VS battle map...');
 
-        // Placeholder: Will load pvp_arena1.json in Phase 4
-        // For now, just log that we would load it
-        console.log('[GameVS] VS map loading will be implemented in Phase 4');
+        try {
+            // Import MapLoader
+            const { MapLoader } = await import('./core/map_loader.js');
+            const mapLoader = new MapLoader(this);
 
-        // Create basic battle arena placeholder
-        this.createPlaceholderArena();
-    }
+            // Load pvp_arena1.json
+            await mapLoader.loadMap('assets/maps/pvp_arena1.json');
 
-    /**
-     * Create placeholder battle arena
-     */
-    createPlaceholderArena() {
-        console.log('[GameVS] Creating placeholder arena...');
+            console.log('[GameVS] VS battle map loaded successfully');
 
-        // This will be replaced with actual map loading in Phase 4
-        // For now, just setup basic game state
-        this.paused = false;
-        this.matchStarted = true;
-        this.playersAlive = 1; // Will be updated when players connect
+            // Setup match state
+            this.paused = false;
+            this.matchStarted = false; // Will be set to true by server signal
+            this.playersAlive = 0; // Will be updated when players spawn
+
+        } catch (error) {
+            console.error('[GameVS] Failed to load VS map:', error);
+            throw error;
+        }
     }
 
     /**

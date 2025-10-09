@@ -237,13 +237,13 @@
 - [x] Commit: "Frontend: VS game page setup"
 
 ### Days 16-17: PvP Arena Map
-- [ ] Create `assets/maps/pvp_arena.json`
-- [ ] Design small map (1280x720 recommended)
-- [ ] Add 4 spawn points in corners
-- [ ] Add central platform with power-ups
-- [ ] Ensure each spawn has safe zone (3 tiles)
-- [ ] Add decorative tiles for visual appeal
-- [ ] Test map loads in `game_vs.js`
+- [x] Create `assets/maps/pvp_arena.json`
+- [x] Design small map (1280x720 recommended)
+- [x] Add 4 spawn points in corners
+- [x] Add central platform with power-ups
+- [x] Ensure each spawn has safe zone (3 tiles)
+- [x] Add decorative tiles for visual appeal
+- [x] Test map loads in `game_vs.js`
 - [ ] Implement `StaticCamera` system (`core/systems/camera_system_static.js`)
 - [ ] Set camera bounds to show entire map
 - [ ] Test camera shows all 4 corners
