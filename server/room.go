@@ -3,16 +3,21 @@ package main
 import (
 	"log"
 	"sync"
+	"time"
 )
 
 // Room represents a game lobby/room
 type Room struct {
-	Code         string             `json:"code"`
-	Players      map[string]*Player `json:"players"`
-	MaxPlayers   int                `json:"maxPlayers"`
-	Host         *Player            `json:"-"`
-	IsGameActive bool               `json:"isGameActive"`
-	mu           sync.RWMutex
+	Code              string             `json:"code"`
+	Players           map[string]*Player `json:"players"`
+	MaxPlayers        int                `json:"maxPlayers"`
+	Host              *Player            `json:"-"`
+	IsGameActive      bool               `json:"isGameActive"`
+	WaitTimer         *time.Timer        `json:"-"`
+	CountdownTimer    *time.Timer        `json:"-"`
+	CountdownActive   bool               `json:"countdownActive"`
+	CountdownRemaining int                `json:"countdownRemaining"`
+	mu                sync.RWMutex
 }
 
 // RoomManager manages all active rooms
@@ -69,10 +74,12 @@ func (rm *RoomManager) RemoveRoom(code string) {
 // NewRoom creates a new room
 func NewRoom(code string) *Room {
 	return &Room{
-		Code:         code,
-		Players:      make(map[string]*Player),
-		MaxPlayers:   4,
-		IsGameActive: false,
+		Code:              code,
+		Players:           make(map[string]*Player),
+		MaxPlayers:        4,
+		IsGameActive:      false,
+		CountdownActive:   false,
+		CountdownRemaining: 0,
 	}
 }
 
@@ -101,6 +108,11 @@ func (r *Room) AddPlayer(player *Player) {
 
 	// Send current room state to new player
 	r.sendRoomState(player)
+
+	// Start wait timer if this is the second player
+	if len(r.Players) == 2 {
+		r.startWaitTimer()
+	}
 }
 
 // RemovePlayer removes a player from the room
@@ -215,4 +227,112 @@ func (r *Room) StartGame() {
 	r.Broadcast("game_starting", map[string]interface{}{
 		"roomCode": r.Code,
 	}, nil)
+}
+
+// startWaitTimer starts the 20-second wait timer
+func (r *Room) startWaitTimer() {
+	log.Printf("[Room] Starting 20-second wait timer in room %s", r.Code)
+
+	r.WaitTimer = time.AfterFunc(20*time.Second, func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+
+		// Check if we still have enough players and all are ready
+		if r.CanStartGame() {
+			log.Printf("[Room] Wait timer expired, starting countdown in room %s", r.Code)
+			r.startCountdown()
+		} else {
+			log.Printf("[Room] Wait timer expired but conditions not met in room %s", r.Code)
+		}
+	})
+
+	r.Broadcast("wait_timer_started", map[string]interface{}{
+		"duration": 20,
+	}, nil)
+}
+
+// stopWaitTimer stops the wait timer if active
+func (r *Room) stopWaitTimer() {
+	if r.WaitTimer != nil {
+		r.WaitTimer.Stop()
+		r.WaitTimer = nil
+		log.Printf("[Room] Stopped wait timer in room %s", r.Code)
+	}
+}
+
+// startCountdown starts the 10-second countdown
+func (r *Room) startCountdown() {
+	if r.CountdownActive {
+		return
+	}
+
+	r.CountdownActive = true
+	r.CountdownRemaining = 10
+
+	log.Printf("[Room] Starting 10-second countdown in room %s", r.Code)
+
+	r.Broadcast("countdown_started", map[string]interface{}{
+		"remaining": r.CountdownRemaining,
+	}, nil)
+
+	// Countdown ticker
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			r.mu.Lock()
+
+			if !r.CountdownActive {
+				r.mu.Unlock()
+				return
+			}
+
+			r.CountdownRemaining--
+
+			if r.CountdownRemaining <= 0 {
+				log.Printf("[Room] Countdown finished in room %s, starting game", r.Code)
+				r.CountdownActive = false
+				r.StartGame()
+				r.mu.Unlock()
+				return
+			}
+
+			log.Printf("[Room] Countdown: %d seconds remaining in room %s", r.CountdownRemaining, r.Code)
+
+			r.Broadcast("countdown_tick", map[string]interface{}{
+				"remaining": r.CountdownRemaining,
+			}, nil)
+
+			r.mu.Unlock()
+		}
+	}()
+}
+
+// stopCountdown stops the countdown if active
+func (r *Room) stopCountdown() {
+	if r.CountdownActive {
+		r.CountdownActive = false
+		r.CountdownRemaining = 0
+		log.Printf("[Room] Stopped countdown in room %s", r.Code)
+
+		r.Broadcast("countdown_cancelled", nil, nil)
+	}
+}
+
+// checkReadyState checks if all players are ready and triggers countdown
+func (r *Room) checkReadyState() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Stop countdown if not all ready
+	if !r.CanStartGame() {
+		r.stopCountdown()
+		return
+	}
+
+	// Start countdown if conditions met and not already active
+	if !r.CountdownActive && len(r.Players) >= 2 {
+		r.startCountdown()
+	}
 }

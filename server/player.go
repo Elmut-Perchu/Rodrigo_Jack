@@ -158,6 +158,9 @@ func (p *Player) handleLobbyReady(msg *Message) {
 		"playerId": p.ID,
 		"isReady":  p.IsReady,
 	}, nil)
+
+	// Check if ready state triggers countdown
+	p.Room.checkReadyState()
 }
 
 // handleChatMessage handles chat messages

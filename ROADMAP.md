@@ -85,6 +85,19 @@
   - ✅ Health check endpoint
 - Tests: ✅ Server compile et démarre, ✅ Health check OK
 
+**Phase 2 Days 6-8 Status**: ✅ COMPLET
+- Lobby logic avec timers:
+  - ✅ Wait timer: 20 secondes après 2ème joueur
+  - ✅ Countdown: 10 secondes quand tous ready
+  - ✅ Auto-start game après countdown
+  - ✅ Cancel countdown si joueur pas ready
+- Messages WebSocket ajoutés:
+  - Server → Client: `wait_timer_started`, `countdown_started`, `countdown_tick`, `countdown_cancelled`
+- Room struct étendu:
+  - WaitTimer, CountdownTimer, CountdownActive, CountdownRemaining
+- Ready check automatique: `checkReadyState()` déclenche countdown
+- Tests: ✅ Server rebuild OK, ✅ Timers fonctionnels
+
 **Modifications apportées**:
 ```javascript
 // Lignes 295-413: Section MODE SELECTION
@@ -117,15 +130,15 @@
 - [x] Commit: "Backend: WebSocket server foundation"
 
 ### Days 6-8: Lobby Logic
-- [ ] Implement `lobby_join` message handler
-- [ ] Implement room capacity check (2-4 players)
-- [ ] Implement player join broadcast to all clients
-- [ ] Implement player leave handling
-- [ ] Add 20-second wait timer logic
-- [ ] Add 10-second countdown logic
-- [ ] Implement `game_starting` trigger
-- [ ] Test with 2+ WebSocket clients
-- [ ] Commit: "Backend: Lobby logic with timers"
+- [x] Implement `lobby_join` message handler
+- [x] Implement room capacity check (2-4 players)
+- [x] Implement player join broadcast to all clients
+- [x] Implement player leave handling
+- [x] Add 20-second wait timer logic
+- [x] Add 10-second countdown logic
+- [x] Implement `game_starting` trigger
+- [x] Test with 2+ WebSocket clients
+- [x] Commit: "Backend: Lobby logic with timers"
 
 ### Days 9-10: Chat System
 - [ ] Implement `chat_message` message handler
