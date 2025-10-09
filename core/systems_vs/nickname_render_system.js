@@ -5,7 +5,7 @@
  * Phase 4 Days 23-24
  */
 
-import { System } from '../system.js';
+import { System } from '../systems/system.js';
 
 export class NicknameRenderSystem extends System {
     constructor(game) {
@@ -42,17 +42,37 @@ export class NicknameRenderSystem extends System {
      * @private
      */
     setupCanvas() {
-        const gameWorld = document.querySelector('.game-world');
-        if (!gameWorld) return;
+        // Find canvas by ID (vs_game.html) or inside .game-world (adventure mode)
+        this.canvas = document.getElementById('nickname-canvas');
 
-        // Find or create canvas
-        this.canvas = gameWorld.querySelector('canvas');
         if (!this.canvas) {
-            console.warn('[NicknameRenderSystem] Canvas not found');
+            // Fallback: look inside .game-world (adventure mode)
+            const gameWorld = document.querySelector('.game-world');
+            if (gameWorld) {
+                this.canvas = gameWorld.querySelector('canvas');
+            }
+        }
+
+        if (!this.canvas) {
+            console.warn('[NicknameRenderSystem] Canvas not found - neither #nickname-canvas nor .game-world canvas exists');
             return;
         }
 
+        console.log('[NicknameRenderSystem] Canvas setup successful');
+
+        // Set canvas size to match window
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+
         this.ctx = this.canvas.getContext('2d');
+
+        // Resize canvas when window resizes
+        window.addEventListener('resize', () => {
+            if (this.canvas) {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+            }
+        });
     }
 
     /**

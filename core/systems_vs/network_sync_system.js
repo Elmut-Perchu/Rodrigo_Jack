@@ -5,7 +5,7 @@
  * Phase 4 Days 18-20
  */
 
-import { System } from '../system.js';
+import { System } from '../systems/system.js';
 
 export class NetworkSyncSystem extends System {
     constructor(game) {
@@ -28,10 +28,29 @@ export class NetworkSyncSystem extends System {
         this.pingInterval = 1000; // Ping every second
         this.latency = 0;
 
-        // Register message handlers
-        this.registerHandlers();
+        // Buffer cleanup
+        this.lastBufferCleanup = 0;
+        this.bufferCleanupInterval = 5000; // Cleanup every 5 seconds
+        this.staleBufferThreshold = 30000; // 30 seconds without updates = stale
+
+        // Handlers will be registered in setGame() after game reference is set
+        this.handlersRegistered = false;
 
         console.log('[NetworkSyncSystem] Initialized');
+    }
+
+    /**
+     * Override setGame to register handlers after game is set
+     * @param {Game} game - Game instance
+     */
+    setGame(game) {
+        super.setGame(game);
+
+        // Register handlers now that we have game reference
+        if (!this.handlersRegistered) {
+            this.registerHandlers();
+            this.handlersRegistered = true;
+        }
     }
 
     /**
@@ -111,6 +130,13 @@ export class NetworkSyncSystem extends System {
 
         // Ping server for latency measurement
         this.updatePing(deltaTime);
+
+        // Cleanup stale buffers periodically
+        this.lastBufferCleanup += deltaTime;
+        if (this.lastBufferCleanup >= this.bufferCleanupInterval) {
+            this.cleanupStaleBuffers();
+            this.lastBufferCleanup = 0;
+        }
     }
 
     /**
@@ -371,6 +397,39 @@ export class NetworkSyncSystem extends System {
     }
 
     /**
+     * Cleanup stale state buffers for disconnected players
+     * @private
+     */
+    cleanupStaleBuffers() {
+        const now = Date.now();
+        let cleanedCount = 0;
+
+        for (const [playerId, buffer] of this.stateBuffer.entries()) {
+            if (buffer.length === 0) {
+                // Empty buffer, remove it
+                this.stateBuffer.delete(playerId);
+                cleanedCount++;
+                continue;
+            }
+
+            // Check last update time
+            const lastState = buffer[buffer.length - 1];
+            const timeSinceLastUpdate = now - (lastState.receivedAt || 0);
+
+            if (timeSinceLastUpdate > this.staleBufferThreshold) {
+                // Buffer is stale (player likely disconnected)
+                this.stateBuffer.delete(playerId);
+                cleanedCount++;
+                console.log(`[NetworkSyncSystem] Cleaned stale buffer for player ${playerId} (last update: ${(timeSinceLastUpdate / 1000).toFixed(1)}s ago)`);
+            }
+        }
+
+        if (cleanedCount > 0) {
+            console.log(`[NetworkSyncSystem] Cleaned ${cleanedCount} stale buffer(s)`);
+        }
+    }
+
+    /**
      * Get network stats
      * @returns {Object}
      */
@@ -379,7 +438,8 @@ export class NetworkSyncSystem extends System {
             latency: this.latency,
             updateRate: this.updateRate,
             interpolationDelay: this.interpolationDelay,
-            remotePlayerCount: this.game.players.size - 1
+            remotePlayerCount: this.game.players.size - 1,
+            activeBuffers: this.stateBuffer.size
         };
     }
 }

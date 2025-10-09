@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadlock Fix Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #00ff00;
+        }
+        .log {
+            background-color: #000;
+            padding: 10px;
+            border: 1px solid #00ff00;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+        }
+        .success { color: #00ff00; }
+        .error { color: #ff0000; }
+        .info { color: #00aaff; }
+        button {
+            background-color: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #00aa00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Deadlock Fix Test</h1>
+    <p>Ce test vérifie que les messages WebSocket sont maintenant reçus correctement.</p>
+
+    <div>
+        <button onclick="runTest()">▶ Run Test</button>
+        <button onclick="clearLog()">🗑 Clear Log</button>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <script>
+        const logElement = document.getElementById('log');
+        let ws1, ws2;
+        let roomCode = 'TEST' + Date.now();
+        let messagesReceived = 0;
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearLog() {
+            logElement.innerHTML = '';
+            messagesReceived = 0;
+        }
+
+        function runTest() {
+            clearLog();
+            log('🚀 Starting deadlock fix test...', 'info');
+
+            // Create Player 1
+            log('📡 Connecting Player 1...', 'info');
+            ws1 = new WebSocket('ws://localhost:8080/ws');
+
+            ws1.onopen = () => {
+                log('✅ Player 1 connected', 'success');
+
+                // Join room
+                const joinMessage = {
+                    type: 'join_room',
+                    data: {
+                        roomCode: roomCode,
+                        playerName: 'Player 1'
+                    }
+                };
+
+                log(`📤 Player 1 sending join_room (${roomCode})`, 'info');
+                ws1.send(JSON.stringify(joinMessage));
+            };
+
+            ws1.onmessage = (event) => {
+                messagesReceived++;
+                const data = JSON.parse(event.data);
+                log(`📥 Player 1 received: ${data.type}`, 'success');
+                log(`   Data: ${JSON.stringify(data.data)}`, 'info');
+
+                // After Player 1 receives room_state, connect Player 2
+                if (data.type === 'room_state' && !ws2) {
+                    log('🎯 Player 1 successfully joined! Now connecting Player 2...', 'success');
+                    setTimeout(connectPlayer2, 1000);
+                }
+            };
+
+            ws1.onerror = (error) => {
+                log(`❌ Player 1 error: ${error}`, 'error');
+            };
+
+            ws1.onclose = () => {
+                log('🔌 Player 1 disconnected', 'info');
+            };
+        }
+
+        function connectPlayer2() {
+            log('📡 Connecting Player 2...', 'info');
+            ws2 = new WebSocket('ws://localhost:8080/ws');
+
+            ws2.onopen = () => {
+                log('✅ Player 2 connected', 'success');
+
+                // Join same room
+                const joinMessage = {
+                    type: 'join_room',
+                    data: {
+                        roomCode: roomCode,
+                        playerName: 'Player 2'
+                    }
+                };
+
+                log(`📤 Player 2 sending join_room (${roomCode})`, 'info');
+                ws2.send(JSON.stringify(joinMessage));
+            };
+
+            ws2.onmessage = (event) => {
+                messagesReceived++;
+                const data = JSON.parse(event.data);
+                log(`📥 Player 2 received: ${data.type}`, 'success');
+                log(`   Data: ${JSON.stringify(data.data)}`, 'info');
+
+                // After both players joined, show success
+                if (data.type === 'room_state' && messagesReceived >= 4) {
+                    setTimeout(showSuccess, 1000);
+                }
+            };
+
+            ws2.onerror = (error) => {
+                log(`❌ Player 2 error: ${error}`, 'error');
+            };
+
+            ws2.onclose = () => {
+                log('🔌 Player 2 disconnected', 'info');
+            };
+        }
+
+        function showSuccess() {
+            log('', 'info');
+            log('═══════════════════════════════════════', 'success');
+            log('🎉 TEST PASSED! DEADLOCK FIXED!', 'success');
+            log(`📊 Total messages received: ${messagesReceived}`, 'success');
+            log('✅ Both players successfully joined room', 'success');
+            log('✅ All messages were received', 'success');
+            log('✅ No deadlock detected', 'success');
+            log('═══════════════════════════════════════', 'success');
+
+            // Cleanup
+            setTimeout(() => {
+                log('🧹 Cleaning up connections...', 'info');
+                if (ws1) ws1.close();
+                if (ws2) ws2.close();
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

@@ -19,7 +19,9 @@ export function createTile(gridX, gridY, tilesetX, tilesetY, properties = {}) {
     tile.addComponent('property', new Property(false, 0, properties.solid || false, 0, false));
 
     const tileComponent = new Tile();
-    tileComponent.init('./assets/sprites/Tileset_Base.png');
+    // Detect if we're in views/ subdirectory
+    const basePath = window.location.pathname.includes('/views/') ? '../' : './';
+    tileComponent.init(`${basePath}assets/sprites/Tileset_Base.png`);
     tileComponent.setTilePosition(tilesetX, tilesetY);
     tile.addComponent('tile', tileComponent);
 

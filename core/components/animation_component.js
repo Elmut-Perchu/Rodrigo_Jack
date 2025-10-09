@@ -160,7 +160,9 @@ export class PlayerAnimation extends Animation {
             },
             // ... autres séquences du player
         };
-        this.init('./assets/sprites/Adventurer_Sprite_Sheet_v1.5.png', 72, 72, 13, 15);
+        // Detect if we're in views/ subdirectory
+        const basePath = window.location.pathname.includes('/views/') ? '../' : './';
+        this.init(`${basePath}assets/sprites/Adventurer_Sprite_Sheet_v1.5.png`, 72, 72, 13, 15);
     }
 }
 

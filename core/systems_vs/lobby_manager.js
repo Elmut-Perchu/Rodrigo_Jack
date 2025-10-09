@@ -329,6 +329,10 @@ export class LobbyManager {
         console.log('[LobbyManager] Game starting!');
         this.ui.lobbyInfo.textContent = 'Starting game...';
 
+        // Store playerName in sessionStorage for game_vs.js
+        sessionStorage.setItem('vsPlayerName', this.playerName);
+        sessionStorage.setItem('vsPlayerId', this.playerId);
+
         // Redirect to game page after 2 seconds
         setTimeout(() => {
             window.location.href = 'vs_game.html?room=' + this.roomCode;

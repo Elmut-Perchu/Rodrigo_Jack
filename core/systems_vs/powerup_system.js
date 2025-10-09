@@ -5,7 +5,7 @@
  * Phase 5 Days 25-27
  */
 
-import { System } from '../system.js';
+import { System } from '../systems/system.js';
 
 export class PowerUpSystem extends System {
     constructor(game) {

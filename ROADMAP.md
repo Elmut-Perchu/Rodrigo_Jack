@@ -237,7 +237,54 @@
 - [x] Test page loads correctly after lobby countdown
 - [x] Commit: "Frontend: VS game page setup"
 
-### Days 16-17: PvP Arena Map
+### Days 16-17: Game WebSocket Connection & Player Entities (CRITICAL - MISSING)
+**🚨 CRITICAL BLOCKER**: game_vs.js ne se connecte pas au WebSocket après redirection!
+
+- [ ] **Prerequisite**: Modify `views/vs_lobby.html` line 333:
+  - [ ] Store playerName in sessionStorage before redirect: `sessionStorage.setItem('vsPlayerName', this.playerName);`
+- [ ] Import `WebSocketClient` in game_vs.js
+- [ ] Create `connectToServer()` method in GameVS class:
+  - [ ] Get playerName from sessionStorage (or prompt if missing)
+  - [ ] Create `this.networkClient = new WebSocketClient()`
+  - [ ] Call `await this.networkClient.connect(roomCode, playerName)`
+  - [ ] Clear sessionStorage after retrieval
+- [ ] Create `setupNetworkHandlers()` method:
+  - [ ] Handler: `lobby_joined` → store `this.localPlayerId` and `this.isHost`
+  - [ ] Handler: `room_state` → call `handleRoomState(data)` to create all players
+  - [ ] Handler: `player_joined` → call `handlePlayerJoined(data)` to create new player
+  - [ ] Handler: `player_left` → call `handlePlayerLeft(data)` to remove player
+  - [ ] Handler: `match_start` → set `this.matchStarted = true`, `this.paused = false`
+- [ ] Create `handleRoomState(data)` method:
+  - [ ] Loop through `data.players` array
+  - [ ] For each player: call `createLocalPlayer()` if playerId matches localPlayerId, else `createRemotePlayer()`
+  - [ ] Set `this.playersReady = true` flag when done
+- [ ] Create `createLocalPlayer(playerData, playerIndex)` method:
+  - [ ] Import player factory: `const { createPlayer } = await import('./create/player_create.js')`
+  - [ ] Get spawn point: `const spawn = this.getSpawnPoint(playerIndex)`
+  - [ ] Create player: `const player = createPlayer(spawn.x, spawn.y)`
+  - [ ] Add network component: `player.addComponent('networkPlayer', { playerId, playerName, isLocal: true, playerIndex })`
+  - [ ] Add to game: `this.entities.add(player)` and `this.players.set(playerId, player)`
+- [ ] Create `createRemotePlayer(playerData, playerIndex)` method:
+  - [ ] Get NetworkSyncSystem: `const networkSystem = this.getSystem('NetworkSyncSystem')`
+  - [ ] Call: `await networkSystem.createRemotePlayer(playerData, playerIndex)`
+- [ ] Create `getSpawnPoint(playerIndex)` method:
+  - [ ] Find spawn points in loaded map entities (look for entities with 'spawn' component)
+  - [ ] Fallback to default positions: `[{x:100,y:100}, {x:700,y:100}, {x:100,y:500}, {x:700,y:500}]`
+  - [ ] Return `spawnPoints[playerIndex]` or default
+- [ ] Create `waitForPlayers()` promise method:
+  - [ ] Poll `this.playersReady` flag every 100ms
+  - [ ] Resolve when true
+  - [ ] Timeout after 10 seconds
+- [ ] Modify `initializeVSMode()` flow:
+  - [ ] After `disableAdventureFeatures()` and `loadVSMap()`
+  - [ ] Call `await this.connectToServer()`
+  - [ ] Call `await this.addVSSystems()` (NetworkSyncSystem needs networkClient)
+  - [ ] Call `await this.waitForPlayers()`
+  - [ ] Call `this.start()` to begin game loop
+- [ ] Test: Open 2 browser tabs, join same room, verify both players appear in arena
+- [ ] Commit: "CRITICAL FIX: Game WebSocket connection + player entities"
+
+### Days 16.5-17: PvP Arena Map & Static Camera
 - [x] Create `assets/maps/pvp_arena.json`
 - [x] Design small map (1280x720 recommended)
 - [x] Add 4 spawn points in corners
@@ -245,12 +292,15 @@
 - [x] Ensure each spawn has safe zone (3 tiles)
 - [x] Add decorative tiles for visual appeal
 - [x] Test map loads in `game_vs.js`
-- [ ] Implement `StaticCamera` system (`core/systems/camera_system_static.js`)
-- [ ] Set camera bounds to show entire map
-- [ ] Test camera shows all 4 corners
+- [ ] Configure static camera in `disableAdventureFeatures()`:
+  - [ ] Get CameraSystem instance
+  - [ ] Disable camera following: `cameraSystem.enabled = false` OR set static mode
+  - [ ] Center camera on arena: calculate center position from map bounds
+  - [ ] Set zoom to show entire map
+- [ ] Test camera shows all 4 corners without scrolling
 - [ ] Commit: "Frontend: PvP arena map + static camera"
 
-**Deliverables**: ✅ Lobby functional, ✅ Game page ready, ✅ PvP map
+**Deliverables**: ✅ Lobby functional, ✅ Game connects to WebSocket, ✅ Players spawn in arena, ✅ Static camera
 
 ---
 

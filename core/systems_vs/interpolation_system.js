@@ -5,7 +5,7 @@
  * Phase 4 Days 23-24
  */
 
-import { System } from '../system.js';
+import { System } from '../systems/system.js';
 
 export class InterpolationSystem extends System {
     constructor(game) {

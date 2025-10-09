@@ -473,8 +473,8 @@ export class GameVS extends Game {
             const { MapLoader } = await import('./core/map_loader.js');
             const mapLoader = new MapLoader(this);
 
-            // Load pvp_arena1.json (use absolute path from root)
-            await mapLoader.loadMap('../assets/maps/pvp_arena1.json');
+            // Load pvp_arena_compact.json - optimized 24x14 map for screen size
+            await mapLoader.loadMap('../assets/maps/pvp_arena_compact.json');
 
             console.log('[GameVS] VS battle map loaded successfully');
 

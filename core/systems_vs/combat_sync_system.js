@@ -5,7 +5,7 @@
  * Phase 4 Days 21-22
  */
 
-import { System } from '../system.js';
+import { System } from '../systems/system.js';
 
 export class CombatSyncSystem extends System {
     constructor(game) {
