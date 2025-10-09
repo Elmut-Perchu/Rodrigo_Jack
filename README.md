@@ -16,6 +16,25 @@ Built with **vanilla JavaScript** using an **Entity-Component-System (ECS)** arc
 
 ### Running the Game
 
+**Option 1: Automated Script (Recommended)**
+
+```bash
+# Navigate to project directory
+cd /path/to/Rodrigo_Jack
+
+# Run automated startup script
+./start-servers.sh
+```
+
+This script will:
+- ✅ Auto-detect and kill processes on ports 8000 and 8080
+- ✅ Build and start both servers
+- ✅ Show color-coded status messages
+- ✅ Display server PIDs for easy management
+- ✅ Provide health check URLs
+
+**Option 2: Manual Start**
+
 **1. Start Frontend Server:**
 
 ```bash
