@@ -247,6 +247,28 @@ func (r *Room) StartGame() {
 	}, nil)
 }
 
+// GetAllPlayerStates returns all player states for sync
+func (r *Room) GetAllPlayerStates() []map[string]interface{} {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	states := make([]map[string]interface{}, 0, len(r.Players))
+	for _, player := range r.Players {
+		states = append(states, map[string]interface{}{
+			"playerId":    player.ID,
+			"x":           player.X,
+			"y":           player.Y,
+			"vx":          player.VX,
+			"vy":          player.VY,
+			"animation":   player.Animation,
+			"facingRight": player.FacingRight,
+			"health":      player.Health,
+			"isAlive":     player.IsAlive,
+		})
+	}
+	return states
+}
+
 // startWaitTimer starts the 20-second wait timer
 func (r *Room) startWaitTimer() {
 	log.Printf("[Room] Starting 20-second wait timer in room %s", r.Code)

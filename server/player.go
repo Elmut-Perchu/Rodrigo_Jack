@@ -21,6 +21,15 @@ type Player struct {
 	SendChan        chan []byte     `json:"-"`
 	LastMessageTime time.Time       `json:"-"`
 	MessageCount    int             `json:"-"`
+	// Game state
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	VX          float64 `json:"vx"`
+	VY          float64 `json:"vy"`
+	Animation   string  `json:"animation"`
+	FacingRight bool    `json:"facingRight"`
+	Health      int     `json:"health"`
+	IsAlive     bool    `json:"isAlive"`
 }
 
 // Message represents a WebSocket message
@@ -38,6 +47,10 @@ func NewPlayer(conn *websocket.Conn) *Player {
 		IsReady:         false,
 		IsHost:          false,
 		SendChan:        make(chan []byte, 256),
+		Animation:       "idle",
+		FacingRight:     true,
+		Health:          100,
+		IsAlive:         true,
 		LastMessageTime: time.Now(),
 		MessageCount:    0,
 	}
@@ -96,8 +109,13 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handleLobbyReady(msg)
 	case "chat_message":
 		p.handleChatMessage(msg)
+	case "player_state":
+		p.handlePlayerState(msg)
 	case "ping":
-		p.sendMessage("pong", nil)
+		// Send pong with timestamp
+		p.sendMessage("pong", map[string]interface{}{
+			"timestamp": msg.Data["timestamp"],
+		})
 	default:
 		log.Printf("[Player] Unknown message type: %s", msg.Type)
 	}
@@ -226,6 +244,42 @@ func (p *Player) handleChatMessage(msg *Message) {
 		"playerName": p.Name,
 		"message":    message,
 		"timestamp":  now.UnixMilli(),
+	}, nil)
+}
+
+// handlePlayerState handles player position/state updates
+func (p *Player) handlePlayerState(msg *Message) {
+	if p.Room == nil || !p.Room.IsGameActive {
+		return
+	}
+
+	// Extract state data
+	x, xOk := msg.Data["x"].(float64)
+	y, yOk := msg.Data["y"].(float64)
+	vx, vxOk := msg.Data["vx"].(float64)
+	vy, vyOk := msg.Data["vy"].(float64)
+
+	if !xOk || !yOk || !vxOk || !vyOk {
+		return
+	}
+
+	// Update player state
+	p.X = x
+	p.Y = y
+	p.VX = vx
+	p.VY = vy
+
+	// Get optional animation and facing direction
+	if animation, ok := msg.Data["animation"].(string); ok {
+		p.Animation = animation
+	}
+	if facingRight, ok := msg.Data["facingRight"].(bool); ok {
+		p.FacingRight = facingRight
+	}
+
+	// Broadcast state to all players in room (including sender for reconciliation)
+	p.Room.Broadcast("game_state_sync", map[string]interface{}{
+		"players": p.Room.GetAllPlayerStates(),
 	}, nil)
 }
 

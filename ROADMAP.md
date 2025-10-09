@@ -258,18 +258,18 @@
 **Goal**: Real-time player synchronization and combat
 
 ### Days 18-20: Network Sync System
-- [ ] Create `core/network/network_sync_system.js`
-- [ ] Implement `NetworkSyncSystem` extending `System`
-- [ ] Send player position/velocity every frame (60fps)
-- [ ] Implement `player_state` message (x, y, vx, vy, animation)
-- [ ] Handle `game_state_sync` from server
-- [ ] Implement client-side prediction for local player
-- [ ] Implement server reconciliation (snap if error > 50px)
-- [ ] Create remote player entities for other players
-- [ ] Implement interpolation for remote players (smooth movement)
+- [x] Create `core/network/network_sync_system.js`
+- [x] Implement `NetworkSyncSystem` extending `System`
+- [x] Send player position/velocity every frame (60fps)
+- [x] Implement `player_state` message (x, y, vx, vy, animation)
+- [x] Handle `game_state_sync` from server
+- [x] Implement client-side prediction for local player
+- [x] Implement server reconciliation (snap if error > 50px)
+- [x] Create remote player entities for other players
+- [x] Implement interpolation for remote players (smooth movement)
 - [ ] Test with 2 players moving simultaneously
 - [ ] Measure network latency impact
-- [ ] Commit: "Network: Player sync system"
+- [x] Commit: "Network: Player sync system"
 
 ### Days 21-22: Combat Sync
 - [ ] Send attack messages (`player_attack`: type, direction)

@@ -48,10 +48,26 @@ export class GameVS extends Game {
         // Disable Adventure-specific features
         this.disableAdventureFeatures();
 
-        // Load VS battle map (placeholder - will implement in Phase 4)
+        // Add VS-specific systems
+        await this.addVSSystems();
+
+        // Load VS battle map
         await this.loadVSMap();
 
         console.log('[GameVS] VS mode initialized');
+    }
+
+    /**
+     * Add VS-specific systems
+     */
+    async addVSSystems() {
+        console.log('[GameVS] Adding VS-specific systems...');
+
+        // Import and add NetworkSyncSystem
+        const { NetworkSyncSystem } = await import('./core/systems_vs/network_sync_system.js');
+        this.addSystem(new NetworkSyncSystem(this));
+
+        console.log('[GameVS] VS systems added');
     }
 
     /**
