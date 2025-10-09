@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"html"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -10,13 +12,15 @@ import (
 
 // Player represents a connected client
 type Player struct {
-	ID       string          `json:"id"`
-	Name     string          `json:"name"`
-	Conn     *websocket.Conn `json:"-"`
-	Room     *Room           `json:"-"`
-	IsReady  bool            `json:"isReady"`
-	IsHost   bool            `json:"isHost"`
-	SendChan chan []byte     `json:"-"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Conn            *websocket.Conn `json:"-"`
+	Room            *Room           `json:"-"`
+	IsReady         bool            `json:"isReady"`
+	IsHost          bool            `json:"isHost"`
+	SendChan        chan []byte     `json:"-"`
+	LastMessageTime time.Time       `json:"-"`
+	MessageCount    int             `json:"-"`
 }
 
 // Message represents a WebSocket message
@@ -29,11 +33,13 @@ type Message struct {
 // NewPlayer creates a new player instance
 func NewPlayer(conn *websocket.Conn) *Player {
 	player := &Player{
-		ID:       generateUUID(),
-		Conn:     conn,
-		IsReady:  false,
-		IsHost:   false,
-		SendChan: make(chan []byte, 256),
+		ID:              generateUUID(),
+		Conn:            conn,
+		IsReady:         false,
+		IsHost:          false,
+		SendChan:        make(chan []byte, 256),
+		LastMessageTime: time.Now(),
+		MessageCount:    0,
 	}
 
 	log.Printf("[Player] New player created: %s", player.ID)
@@ -110,7 +116,16 @@ func (p *Player) handleLobbyJoin(msg *Message) {
 		playerName = "Player"
 	}
 
-	p.Name = playerName
+	// Validate and sanitize nickname (max 12 chars)
+	playerName = strings.TrimSpace(playerName)
+	if len(playerName) > 12 {
+		playerName = playerName[:12]
+	}
+	if playerName == "" {
+		playerName = "Player"
+	}
+
+	p.Name = html.EscapeString(playerName)
 
 	log.Printf("[Player] %s attempting to join room: %s (name: %s)", p.ID, roomCode, p.Name)
 
@@ -175,6 +190,34 @@ func (p *Player) handleChatMessage(msg *Message) {
 		return
 	}
 
+	// Rate limiting: 5 messages per second
+	now := time.Now()
+	if now.Sub(p.LastMessageTime) < time.Second {
+		p.MessageCount++
+		if p.MessageCount > 5 {
+			log.Printf("[Chat] Rate limit exceeded for %s", p.Name)
+			p.sendMessage("error", map[string]interface{}{
+				"message": "Rate limit exceeded. Slow down!",
+			})
+			return
+		}
+	} else {
+		// Reset counter after 1 second
+		p.MessageCount = 1
+		p.LastMessageTime = now
+	}
+
+	// Sanitize message (escape HTML, trim, max 200 chars)
+	message = strings.TrimSpace(message)
+	if len(message) > 200 {
+		message = message[:200]
+	}
+	message = html.EscapeString(message)
+
+	if message == "" {
+		return
+	}
+
 	log.Printf("[Chat] %s: %s", p.Name, message)
 
 	// Broadcast to room
@@ -182,6 +225,7 @@ func (p *Player) handleChatMessage(msg *Message) {
 		"playerId":   p.ID,
 		"playerName": p.Name,
 		"message":    message,
+		"timestamp":  now.UnixMilli(),
 	}, nil)
 }
 

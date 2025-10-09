@@ -98,6 +98,21 @@
 - Ready check automatique: `checkReadyState()` déclenche countdown
 - Tests: ✅ Server rebuild OK, ✅ Timers fonctionnels
 
+**Phase 2 Days 9-10 Status**: ✅ COMPLET
+- Chat system complet avec sécurité:
+  - ✅ Nickname validation: max 12 chars, HTML escape, trim
+  - ✅ Message sanitization: HTML escape, max 200 chars, trim
+  - ✅ Rate limiting: 5 messages/seconde par joueur
+  - ✅ System messages: join/leave automatiques
+- Player struct étendu:
+  - LastMessageTime, MessageCount (rate limiting)
+- Chat message enrichi:
+  - timestamp (UnixMilli), isSystem flag
+- Security:
+  - HTML injection prevented via html.EscapeString()
+  - Rate limit avec erreur "Rate limit exceeded"
+- Tests: ✅ Server rebuild OK, ✅ Chat sécurisé
+
 **Modifications apportées**:
 ```javascript
 // Lignes 295-413: Section MODE SELECTION
@@ -141,14 +156,14 @@
 - [x] Commit: "Backend: Lobby logic with timers"
 
 ### Days 9-10: Chat System
-- [ ] Implement `chat_message` message handler
-- [ ] Broadcast chat to all players in room
-- [ ] Add nickname validation (max 12 chars)
-- [ ] Add message sanitization (escape HTML)
-- [ ] Add system messages (player join/leave)
-- [ ] Test chat with multiple clients
-- [ ] Add rate limiting (5 msgs/sec per player)
-- [ ] Commit: "Backend: Chat system complete"
+- [x] Implement `chat_message` message handler
+- [x] Broadcast chat to all players in room
+- [x] Add nickname validation (max 12 chars)
+- [x] Add message sanitization (escape HTML)
+- [x] Add system messages (player join/leave)
+- [x] Test chat with multiple clients
+- [x] Add rate limiting (5 msgs/sec per player)
+- [x] Commit: "Backend: Chat system complete"
 
 **Deliverables**: ✅ WebSocket server running, ✅ Lobby + chat functional
 

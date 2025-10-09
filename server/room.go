@@ -106,6 +106,15 @@ func (r *Room) AddPlayer(player *Player) {
 		"playerCount": len(r.Players),
 	}, player)
 
+	// Send system message: player joined
+	r.Broadcast("chat_message", map[string]interface{}{
+		"playerId":   "system",
+		"playerName": "System",
+		"message":    player.Name + " joined the room",
+		"timestamp":  time.Now().UnixMilli(),
+		"isSystem":   true,
+	}, nil)
+
 	// Send current room state to new player
 	r.sendRoomState(player)
 
@@ -140,6 +149,15 @@ func (r *Room) RemovePlayer(player *Player) {
 	r.Broadcast("player_left", map[string]interface{}{
 		"playerId":    player.ID,
 		"playerCount": len(r.Players),
+	}, nil)
+
+	// Send system message: player left
+	r.Broadcast("chat_message", map[string]interface{}{
+		"playerId":   "system",
+		"playerName": "System",
+		"message":    player.Name + " left the room",
+		"timestamp":  time.Now().UnixMilli(),
+		"isSystem":   true,
 	}, nil)
 }
 
