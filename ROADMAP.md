@@ -69,6 +69,22 @@
   - [game_vs.js](game_vs.js) - Extension de Game pour multiplayer
 - Tests: ✅ Adventure mode fonctionne, ✅ VS lobby charge correctement
 
+**Phase 2 Days 3-5 Status**: ✅ COMPLET
+- Go module: `rodrigo-jack-vs` avec gorilla/websocket, gorilla/mux
+- Fichiers backend créés:
+  - [server/main.go](server/main.go) - WebSocket server (port 8080)
+  - [server/player.go](server/player.go) - Player struct avec message handling
+  - [server/room.go](server/room.go) - Room management avec broadcast
+- Features implémentées:
+  - ✅ WebSocket upgrade handler
+  - ✅ Player connection/disconnection
+  - ✅ Room creation/joining (max 4 players)
+  - ✅ Host assignment (first player)
+  - ✅ Message routing (lobby_join, lobby_ready, chat_message)
+  - ✅ Broadcast system
+  - ✅ Health check endpoint
+- Tests: ✅ Server compile et démarre, ✅ Health check OK
+
 **Modifications apportées**:
 ```javascript
 // Lignes 295-413: Section MODE SELECTION
@@ -91,14 +107,14 @@
 **Goal**: WebSocket server with lobby, chat, and room management
 
 ### Days 3-5: Go WebSocket Server
-- [ ] Install Go dependencies (`gorilla/websocket`, `gorilla/mux`)
-- [ ] Create `server/main.go` with basic WebSocket handler
-- [ ] Create `server/player.go` (Player struct)
-- [ ] Create `server/room.go` (Room struct)
-- [ ] Implement connection/disconnection handling
-- [ ] Test with WebSocket client tool (Postman/wscat)
-- [ ] Add logging for all connections
-- [ ] Commit: "Backend: WebSocket server foundation"
+- [x] Install Go dependencies (`gorilla/websocket`, `gorilla/mux`)
+- [x] Create `server/main.go` with basic WebSocket handler
+- [x] Create `server/player.go` (Player struct)
+- [x] Create `server/room.go` (Room struct)
+- [x] Implement connection/disconnection handling
+- [x] Test with WebSocket client tool (Postman/wscat)
+- [x] Add logging for all connections
+- [x] Commit: "Backend: WebSocket server foundation"
 
 ### Days 6-8: Lobby Logic
 - [ ] Implement `lobby_join` message handler
