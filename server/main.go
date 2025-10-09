@@ -9,13 +9,41 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Allowed origins for CORS (whitelist)
+var allowedOrigins = []string{
+	"http://localhost:8000",
+	"http://localhost:3000",
+	"http://127.0.0.1:8000",
+	"http://127.0.0.1:3000",
+	// Add production domains here:
+	// "https://yourdomain.com",
+}
+
 // WebSocket upgrader configuration
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// Allow connections from any origin (development only)
+	// Check origin against whitelist
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+
+		// Allow connections with no origin (direct connections, testing tools)
+		if origin == "" {
+			log.Printf("[CORS] Allowing connection with no origin header")
+			return true
+		}
+
+		// Check against whitelist
+		for _, allowed := range allowedOrigins {
+			if origin == allowed {
+				log.Printf("[CORS] Allowed origin: %s", origin)
+				return true
+			}
+		}
+
+		// Block unauthorized origins
+		log.Printf("[CORS] BLOCKED unauthorized origin: %s", origin)
+		return false
 	},
 }
 

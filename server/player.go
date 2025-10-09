@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"html"
 	"log"
+	"math"
 	"strings"
 	"time"
 
@@ -30,6 +33,8 @@ type Player struct {
 	FacingRight bool    `json:"facingRight"`
 	Health      int     `json:"health"`
 	IsAlive     bool    `json:"isAlive"`
+	// Validation tracking
+	LastStateUpdate time.Time `json:"-"` // For rate limiting and movement validation
 }
 
 // Message represents a WebSocket message
@@ -53,6 +58,7 @@ func NewPlayer(conn *websocket.Conn) *Player {
 		IsAlive:         true,
 		LastMessageTime: time.Now(),
 		MessageCount:    0,
+		LastStateUpdate: time.Now(),
 	}
 
 	log.Printf("[Player] New player created: %s", player.ID)
@@ -86,14 +92,19 @@ func (p *Player) HandleMessages() {
 			break
 		}
 
+		// Log raw message data for debugging
+		log.Printf("[Player] %s received RAW data: %s", p.ID, string(messageData))
+
 		// Parse message
 		var msg Message
 		if err := json.Unmarshal(messageData, &msg); err != nil {
 			log.Printf("[Player] Failed to parse message: %v", err)
+			log.Printf("[Player] Failed data was: %s", string(messageData))
 			continue
 		}
 
-		log.Printf("[Player] %s received message: %s", p.ID, msg.Type)
+		log.Printf("[Player] %s received message type: %s", p.ID, msg.Type)
+		log.Printf("[Player] %s message data: %+v", p.ID, msg.Data)
 
 		// Handle message based on type
 		p.handleMessage(&msg)
@@ -174,28 +185,37 @@ func (p *Player) handleLobbyJoin(msg *Message) {
 
 // handleLobbyReady handles ready status toggle
 func (p *Player) handleLobbyReady(msg *Message) {
+	log.Printf("[LOBBY_READY] ========== START ==========")
+	log.Printf("[LOBBY_READY] Player ID: %s", p.ID)
+	log.Printf("[LOBBY_READY] Message data: %+v", msg.Data)
+
 	if p.Room == nil {
-		log.Printf("[Player] %s not in a room", p.ID)
+		log.Printf("[LOBBY_READY] ERROR: Player %s not in a room", p.ID)
 		return
 	}
+	log.Printf("[LOBBY_READY] Player is in room: %s", p.Room.Code)
 
 	isReady, ok := msg.Data["isReady"].(bool)
 	if !ok {
-		log.Printf("[Player] Invalid isReady value")
+		log.Printf("[LOBBY_READY] ERROR: Invalid isReady value, got type: %T, value: %v", msg.Data["isReady"], msg.Data["isReady"])
 		return
 	}
+	log.Printf("[LOBBY_READY] isReady value: %v", isReady)
 
 	p.IsReady = isReady
-	log.Printf("[Player] %s ready status: %v", p.ID, p.IsReady)
+	log.Printf("[LOBBY_READY] Player %s ready status set to: %v", p.ID, p.IsReady)
 
 	// Broadcast to room
+	log.Printf("[LOBBY_READY] Broadcasting player_ready to room")
 	p.Room.Broadcast("player_ready", map[string]interface{}{
 		"playerId": p.ID,
 		"isReady":  p.IsReady,
 	}, nil)
 
-	// Check if ready state triggers countdown
+	// Check if all players are ready to start countdown
+	log.Printf("[LOBBY_READY] Calling checkReadyState()")
 	p.Room.checkReadyState()
+	log.Printf("[LOBBY_READY] ========== END ==========")
 }
 
 // handleChatMessage handles chat messages
@@ -249,9 +269,18 @@ func (p *Player) handleChatMessage(msg *Message) {
 	}, nil)
 }
 
-// handlePlayerState handles player position/state updates
+// handlePlayerState handles player position/state updates with server-side validation
 func (p *Player) handlePlayerState(msg *Message) {
 	if p.Room == nil || !p.Room.IsGameActive {
+		return
+	}
+
+	now := time.Now()
+
+	// Rate limiting: max 60 updates/sec (16ms minimum delta)
+	timeSinceLastUpdate := now.Sub(p.LastStateUpdate).Milliseconds()
+	if timeSinceLastUpdate < MIN_UPDATE_DELTA {
+		// Too fast, ignore this update
 		return
 	}
 
@@ -262,14 +291,68 @@ func (p *Player) handlePlayerState(msg *Message) {
 	vy, vyOk := msg.Data["vy"].(float64)
 
 	if !xOk || !yOk || !vxOk || !vyOk {
+		log.Printf("[Validation] Invalid state data from player %s", p.Name)
 		return
 	}
 
-	// Update player state
+	// VALIDATION 1: Check velocity bounds
+	if math.Abs(vx) > MAX_VELOCITY || math.Abs(vy) > MAX_VELOCITY {
+		log.Printf("[CHEAT] Player %s velocity too high: vx=%.2f, vy=%.2f (max: %.2f)",
+			p.Name, vx, vy, MAX_VELOCITY)
+
+		// Send correction back to client
+		p.sendMessage("position_correction", map[string]interface{}{
+			"x":  p.X,
+			"y":  p.Y,
+			"vx": p.VX,
+			"vy": p.VY,
+		})
+		return
+	}
+
+	// VALIDATION 2: Check map bounds
+	if x < 0 || x > MAP_WIDTH || y < 0 || y > MAP_HEIGHT {
+		log.Printf("[CHEAT] Player %s out of bounds: (%.2f, %.2f), map: %.2f x %.2f",
+			p.Name, x, y, MAP_WIDTH, MAP_HEIGHT)
+
+		// Send correction back to client
+		p.sendMessage("position_correction", map[string]interface{}{
+			"x":  p.X,
+			"y":  p.Y,
+			"vx": p.VX,
+			"vy": p.VY,
+		})
+		return
+	}
+
+	// VALIDATION 3: Check movement distance (anti-teleportation)
+	timeDelta := float64(timeSinceLastUpdate) / 1000.0 // Convert to seconds
+	maxAllowedDistance := MAX_MOVEMENT_PER_SEC * timeDelta
+
+	dx := x - p.X
+	dy := y - p.Y
+	distance := math.Sqrt(dx*dx + dy*dy)
+
+	if distance > maxAllowedDistance {
+		log.Printf("[CHEAT] Player %s moved too far: %.2f pixels in %.3fs (max: %.2f)",
+			p.Name, distance, timeDelta, maxAllowedDistance)
+
+		// Send correction back to client
+		p.sendMessage("position_correction", map[string]interface{}{
+			"x":  p.X,
+			"y":  p.Y,
+			"vx": p.VX,
+			"vy": p.VY,
+		})
+		return
+	}
+
+	// All validations passed, accept the update
 	p.X = x
 	p.Y = y
 	p.VX = vx
 	p.VY = vy
+	p.LastStateUpdate = now
 
 	// Get optional animation and facing direction
 	if animation, ok := msg.Data["animation"].(string); ok {
@@ -322,8 +405,25 @@ func (p *Player) handlePlayerAttack(msg *Message) {
 	ProcessAttack(p.Room, attackData)
 }
 
-// sendMessage sends a message to the player
+// isDroppableMessage returns true if this message type can be safely dropped when buffer is full
+func isDroppableMessage(msgType string) bool {
+	droppableTypes := []string{
+		"player_state",
+		"game_state_sync",
+	}
+
+	for _, t := range droppableTypes {
+		if msgType == t {
+			return true
+		}
+	}
+	return false
+}
+
+// sendMessage sends a message to the player with improved overflow handling
 func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
+	log.Printf("[SEND_MSG] Sending %s to player %s (%s)", msgType, p.ID, p.Name)
+
 	msg := Message{
 		Type:      msgType,
 		Data:      data,
@@ -332,25 +432,68 @@ func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
 
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("[Player] Failed to marshal message: %v", err)
+		log.Printf("[SEND_MSG] Failed to marshal message: %v", err)
 		return
 	}
 
+	log.Printf("[SEND_MSG] Attempting to send to channel (len=%d, cap=%d)", len(p.SendChan), cap(p.SendChan))
+
 	select {
 	case p.SendChan <- msgBytes:
+		log.Printf("[SEND_MSG] Successfully sent %s to %s", msgType, p.Name)
 	default:
-		log.Printf("[Player] Send channel full, closing connection: %s", p.ID)
-		p.Close()
+		// Buffer is full
+		if isDroppableMessage(msgType) {
+			// For droppable messages (state updates), drop oldest message and retry
+			log.Printf("[SEND_MSG] Buffer full, dropping oldest message for %s", p.Name)
+
+			select {
+			case <-p.SendChan: // Remove oldest message
+				// Retry sending new message
+				select {
+				case p.SendChan <- msgBytes:
+					log.Printf("[SEND_MSG] Successfully sent %s after dropping old message", msgType)
+				default:
+					log.Printf("[SEND_MSG] Still full after drop, skipping message for %s", p.Name)
+				}
+			default:
+				// Channel emptied in the meantime, retry
+				select {
+				case p.SendChan <- msgBytes:
+					log.Printf("[SEND_MSG] Successfully sent %s on retry", msgType)
+				default:
+					log.Printf("[SEND_MSG] Failed to send %s after multiple attempts", msgType)
+				}
+			}
+		} else {
+			// For critical messages (chat, combat, match_end), close connection
+			log.Printf("[SEND_MSG] Critical message queue full, closing connection: %s", p.ID)
+			p.Close()
+		}
 	}
 }
 
-// writePump sends messages from SendChan to WebSocket connection
+// writePump sends messages from SendChan to WebSocket connection with timeout detection
 func (p *Player) writePump() {
 	ticker := time.NewTicker(54 * time.Second)
+	pongTimeout := time.NewTimer(60 * time.Second)
+	pongReceived := make(chan struct{}, 1)
+
 	defer func() {
 		ticker.Stop()
+		pongTimeout.Stop()
 		p.Conn.Close()
 	}()
+
+	// Setup pong handler
+	p.Conn.SetPongHandler(func(string) error {
+		// Pong received, reset timeout
+		select {
+		case pongReceived <- struct{}{}:
+		default:
+		}
+		return nil
+	})
 
 	for {
 		select {
@@ -368,10 +511,24 @@ func (p *Player) writePump() {
 			}
 
 		case <-ticker.C:
+			// Send ping
 			p.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := p.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("[Player] Ping error: %v", err)
 				return
 			}
+
+			// Reset pong timeout
+			pongTimeout.Reset(60 * time.Second)
+
+		case <-pongReceived:
+			// Pong received, connection is alive
+			// Timeout will be reset on next ping
+
+		case <-pongTimeout.C:
+			// No pong received within timeout, connection is dead (zombie)
+			log.Printf("[Player] Pong timeout, closing zombie connection: %s (%s)", p.ID, p.Name)
+			return
 		}
 	}
 }
@@ -392,18 +549,14 @@ func (p *Player) Close() {
 	p.Conn.Close()
 }
 
-// generateUUID generates a simple UUID
+// generateUUID generates a cryptographically secure UUID
 func generateUUID() string {
-	return time.Now().Format("20060102150405") + "-" + randomString(6)
-}
-
-// randomString generates a random string of given length
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[time.Now().UnixNano()%int64(len(charset))]
-		time.Sleep(1 * time.Nanosecond)
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Printf("[UUID] Failed to generate UUID: %v", err)
+		// Fallback to timestamp-based UUID if crypto/rand fails
+		return time.Now().Format("20060102150405000000")
 	}
-	return string(result)
+	return hex.EncodeToString(b)
 }

@@ -17,6 +17,7 @@ type Room struct {
 	CountdownTimer    *time.Timer        `json:"-"`
 	CountdownActive   bool               `json:"countdownActive"`
 	CountdownRemaining int                `json:"countdownRemaining"`
+	countdownCancel   chan struct{}      // Channel to cancel countdown goroutine
 	mu                sync.RWMutex
 }
 
@@ -35,6 +36,7 @@ func NewRoomManager() *RoomManager {
 
 // JoinRoom joins or creates a room
 func (rm *RoomManager) JoinRoom(code string, player *Player) *Room {
+	log.Printf("[RoomManager] JoinRoom called for %s by player %s", code, player.ID)
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -44,20 +46,27 @@ func (rm *RoomManager) JoinRoom(code string, player *Player) *Room {
 		room = NewRoom(code)
 		rm.Rooms[code] = room
 		log.Printf("[RoomManager] Created new room: %s", code)
+	} else {
+		log.Printf("[RoomManager] Found existing room: %s", code)
 	}
 
 	// Check if room is full
 	room.mu.RLock()
-	isFull := len(room.Players) >= room.MaxPlayers
+	currentPlayers := len(room.Players)
+	isFull := currentPlayers >= room.MaxPlayers
 	room.mu.RUnlock()
 
+	log.Printf("[RoomManager] Room %s has %d/%d players, full=%v", code, currentPlayers, room.MaxPlayers, isFull)
+
 	if isFull {
-		log.Printf("[RoomManager] Room %s is full", code)
+		log.Printf("[RoomManager] Room %s is full, rejecting player %s", code, player.ID)
 		return nil
 	}
 
 	// Add player to room
+	log.Printf("[RoomManager] Calling AddPlayer for %s in room %s", player.ID, code)
 	room.AddPlayer(player)
+	log.Printf("[RoomManager] AddPlayer completed for %s", player.ID)
 
 	return room
 }
@@ -99,7 +108,7 @@ func (r *Room) AddPlayer(player *Player) {
 	log.Printf("[Room] Player %s joined room %s (count: %d/%d)", player.ID, r.Code, len(r.Players), r.MaxPlayers)
 
 	// Broadcast player_joined to all other players
-	r.Broadcast("player_joined", map[string]interface{}{
+	r.broadcastLocked("player_joined", map[string]interface{}{
 		"playerId":    player.ID,
 		"playerName":  player.Name,
 		"isHost":      player.IsHost,
@@ -107,7 +116,7 @@ func (r *Room) AddPlayer(player *Player) {
 	}, player)
 
 	// Send system message: player joined
-	r.Broadcast("chat_message", map[string]interface{}{
+	r.broadcastLocked("chat_message", map[string]interface{}{
 		"playerId":   "system",
 		"playerName": "System",
 		"message":    player.Name + " joined the room",
@@ -116,7 +125,7 @@ func (r *Room) AddPlayer(player *Player) {
 	}, nil)
 
 	// Send current room state to new player
-	r.sendRoomState(player)
+	r.sendRoomStateLocked(player)
 
 	// Start wait timer if this is the second player
 	if len(r.Players) == 2 {
@@ -132,9 +141,11 @@ func (r *Room) RemovePlayer(player *Player) {
 	delete(r.Players, player.ID)
 	log.Printf("[Room] Player %s left room %s (count: %d/%d)", player.ID, r.Code, len(r.Players), r.MaxPlayers)
 
-	// If room is empty, mark for cleanup
+	// If room is empty, cleanup and remove
 	if len(r.Players) == 0 {
 		log.Printf("[Room] Room %s is now empty", r.Code)
+		// Cleanup room resources
+		r.cleanup()
 		// Room will be cleaned up by room manager
 		go roomManager.RemoveRoom(r.Code)
 		return
@@ -146,13 +157,13 @@ func (r *Room) RemovePlayer(player *Player) {
 	}
 
 	// Broadcast player_left to remaining players
-	r.Broadcast("player_left", map[string]interface{}{
+	r.broadcastLocked("player_left", map[string]interface{}{
 		"playerId":    player.ID,
 		"playerCount": len(r.Players),
 	}, nil)
 
 	// Send system message: player left
-	r.Broadcast("chat_message", map[string]interface{}{
+	r.broadcastLocked("chat_message", map[string]interface{}{
 		"playerId":   "system",
 		"playerName": "System",
 		"message":    player.Name + " left the room",
@@ -170,7 +181,7 @@ func (r *Room) reassignHost() {
 		log.Printf("[Room] %s is now host of room %s", p.ID, r.Code)
 
 		// Notify all players of new host
-		r.Broadcast("host_changed", map[string]interface{}{
+		r.broadcastLocked("host_changed", map[string]interface{}{
 			"playerId": p.ID,
 		}, nil)
 		break
@@ -182,10 +193,21 @@ func (r *Room) Broadcast(msgType string, data map[string]interface{}, exclude *P
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	r.broadcastLocked(msgType, data, exclude)
+}
+
+// broadcastLocked sends a message to all players (assumes lock is already held)
+func (r *Room) broadcastLocked(msgType string, data map[string]interface{}, exclude *Player) {
+	// Copy player list to avoid holding lock during send
+	playersCopy := make([]*Player, 0, len(r.Players))
 	for _, player := range r.Players {
-		if exclude != nil && player.ID == exclude.ID {
-			continue
+		if exclude == nil || player.ID != exclude.ID {
+			playersCopy = append(playersCopy, player)
 		}
+	}
+
+	// Send to all players (outside of lock to avoid blocking)
+	for _, player := range playersCopy {
 		player.sendMessage(msgType, data)
 	}
 }
@@ -195,6 +217,11 @@ func (r *Room) sendRoomState(player *Player) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	r.sendRoomStateLocked(player)
+}
+
+// sendRoomStateLocked sends current room state to a player (assumes lock is already held)
+func (r *Room) sendRoomStateLocked(player *Player) {
 	// Build player list
 	playerList := make([]map[string]interface{}, 0)
 	for _, p := range r.Players {
@@ -214,24 +241,40 @@ func (r *Room) sendRoomState(player *Player) {
 	})
 }
 
-// CanStartGame checks if the game can start
-func (r *Room) CanStartGame() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+// canStartGameLocked checks if the game can start (assumes lock already held)
+func (r *Room) canStartGameLocked() bool {
+	log.Printf("[CAN_START] Checking if game can start...")
+	log.Printf("[CAN_START] Player count: %d (need >= 2)", len(r.Players))
 
 	// Need at least 2 players
 	if len(r.Players) < 2 {
+		log.Printf("[CAN_START] NOT ENOUGH PLAYERS - returning false")
 		return false
 	}
 
 	// All players must be ready
+	allReady := true
 	for _, player := range r.Players {
+		log.Printf("[CAN_START] Player %s (%s) IsReady: %v", player.ID, player.Name, player.IsReady)
 		if !player.IsReady {
+			log.Printf("[CAN_START] Player %s NOT READY - returning false", player.Name)
+			allReady = false
 			return false
 		}
 	}
 
+	if allReady {
+		log.Printf("[CAN_START] ALL PLAYERS READY - returning true!")
+	}
 	return true
+}
+
+// CanStartGame checks if the game can start (public API with locking)
+func (r *Room) CanStartGame() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.canStartGameLocked()
 }
 
 // StartGame initiates the game
@@ -239,10 +282,15 @@ func (r *Room) StartGame() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.startGameLocked()
+}
+
+// startGameLocked initiates the game (assumes lock is already held)
+func (r *Room) startGameLocked() {
 	r.IsGameActive = true
 	log.Printf("[Room] Starting game in room %s", r.Code)
 
-	r.Broadcast("game_starting", map[string]interface{}{
+	r.broadcastLocked("game_starting", map[string]interface{}{
 		"roomCode": r.Code,
 	}, nil)
 }
@@ -278,7 +326,7 @@ func (r *Room) startWaitTimer() {
 		defer r.mu.Unlock()
 
 		// Check if we still have enough players and all are ready
-		if r.CanStartGame() {
+		if r.canStartGameLocked() {
 			log.Printf("[Room] Wait timer expired, starting countdown in room %s", r.Code)
 			r.startCountdown()
 		} else {
@@ -286,7 +334,7 @@ func (r *Room) startWaitTimer() {
 		}
 	})
 
-	r.Broadcast("wait_timer_started", map[string]interface{}{
+	r.broadcastLocked("wait_timer_started", map[string]interface{}{
 		"duration": 20,
 	}, nil)
 }
@@ -308,43 +356,74 @@ func (r *Room) startCountdown() {
 
 	r.CountdownActive = true
 	r.CountdownRemaining = 10
+	r.countdownCancel = make(chan struct{})
 
 	log.Printf("[Room] Starting 10-second countdown in room %s", r.Code)
 
-	r.Broadcast("countdown_started", map[string]interface{}{
+	r.broadcastLocked("countdown_started", map[string]interface{}{
 		"remaining": r.CountdownRemaining,
 	}, nil)
 
-	// Countdown ticker
+	// Countdown ticker - FIXED: No deadlock, proper cleanup
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			r.mu.Lock()
+		for {
+			select {
+			case <-ticker.C:
+				r.mu.Lock()
 
-			if !r.CountdownActive {
-				r.mu.Unlock()
+				if !r.CountdownActive {
+					r.mu.Unlock()
+					return
+				}
+
+				r.CountdownRemaining--
+				remaining := r.CountdownRemaining
+				shouldStart := remaining <= 0
+
+				// Copy players list BEFORE releasing lock
+				playersCopy := make([]*Player, 0, len(r.Players))
+				for _, p := range r.Players {
+					playersCopy = append(playersCopy, p)
+				}
+
+				r.mu.Unlock() // CRITICAL: Release lock BEFORE sending messages
+
+				if shouldStart {
+					log.Printf("[Room] Countdown finished in room %s, starting game", r.Code)
+
+					// Broadcast game_starting WITHOUT lock
+					for _, p := range playersCopy {
+						p.sendMessage("game_starting", map[string]interface{}{
+							"roomCode": r.Code,
+						})
+					}
+
+					// Mark game active
+					r.mu.Lock()
+					r.CountdownActive = false
+					r.IsGameActive = true
+					r.mu.Unlock()
+
+					return
+				}
+
+				log.Printf("[Room] Countdown: %d seconds remaining in room %s", remaining, r.Code)
+
+				// Broadcast countdown_tick WITHOUT lock
+				for _, p := range playersCopy {
+					p.sendMessage("countdown_tick", map[string]interface{}{
+						"remaining": remaining,
+					})
+				}
+
+			case <-r.countdownCancel:
+				// Countdown cancelled externally
+				log.Printf("[Room] Countdown cancelled via channel in room %s", r.Code)
 				return
 			}
-
-			r.CountdownRemaining--
-
-			if r.CountdownRemaining <= 0 {
-				log.Printf("[Room] Countdown finished in room %s, starting game", r.Code)
-				r.CountdownActive = false
-				r.StartGame()
-				r.mu.Unlock()
-				return
-			}
-
-			log.Printf("[Room] Countdown: %d seconds remaining in room %s", r.CountdownRemaining, r.Code)
-
-			r.Broadcast("countdown_tick", map[string]interface{}{
-				"remaining": r.CountdownRemaining,
-			}, nil)
-
-			r.mu.Unlock()
 		}
 	}()
 }
@@ -356,23 +435,75 @@ func (r *Room) stopCountdown() {
 		r.CountdownRemaining = 0
 		log.Printf("[Room] Stopped countdown in room %s", r.Code)
 
-		r.Broadcast("countdown_cancelled", nil, nil)
+		// Cancel the countdown goroutine
+		if r.countdownCancel != nil {
+			close(r.countdownCancel)
+			r.countdownCancel = nil
+		}
+
+		r.broadcastLocked("countdown_cancelled", nil, nil)
 	}
 }
 
 // checkReadyState checks if all players are ready and triggers countdown
 func (r *Room) checkReadyState() {
+	log.Printf("[CHECK_READY] ========== START ==========")
+	log.Printf("[CHECK_READY] Room: %s", r.Code)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	log.Printf("[CHECK_READY] Player count: %d", len(r.Players))
+	for _, p := range r.Players {
+		log.Printf("[CHECK_READY] Player %s (%s) - IsReady: %v", p.ID, p.Name, p.IsReady)
+	}
+
 	// Stop countdown if not all ready
-	if !r.CanStartGame() {
+	canStart := r.canStartGameLocked()
+	log.Printf("[CHECK_READY] CanStartGame: %v", canStart)
+
+	if !canStart {
+		log.Printf("[CHECK_READY] Cannot start game, stopping countdown")
 		r.stopCountdown()
+		log.Printf("[CHECK_READY] ========== END (not ready) ==========")
 		return
 	}
 
 	// Start countdown if conditions met and not already active
+	log.Printf("[CHECK_READY] CountdownActive: %v", r.CountdownActive)
 	if !r.CountdownActive && len(r.Players) >= 2 {
+		log.Printf("[CHECK_READY] Starting countdown NOW!")
 		r.startCountdown()
+	} else {
+		log.Printf("[CHECK_READY] Countdown already active or not enough players")
 	}
+	log.Printf("[CHECK_READY] ========== END ==========")
+}
+
+// cleanup cleans up room resources (timers, goroutines)
+func (r *Room) cleanup() {
+	log.Printf("[Room] Cleaning up room %s", r.Code)
+
+	// Stop wait timer if active
+	if r.WaitTimer != nil {
+		r.WaitTimer.Stop()
+		r.WaitTimer = nil
+	}
+
+	// Stop countdown timer if active
+	if r.CountdownTimer != nil {
+		r.CountdownTimer.Stop()
+		r.CountdownTimer = nil
+	}
+
+	// Cancel countdown goroutine if active
+	if r.countdownCancel != nil {
+		close(r.countdownCancel)
+		r.countdownCancel = nil
+	}
+
+	r.CountdownActive = false
+	r.CountdownRemaining = 0
+
+	log.Printf("[Room] Room %s cleaned up successfully", r.Code)
 }
