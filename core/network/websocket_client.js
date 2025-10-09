@@ -2,8 +2,7 @@
  * WebSocket Client for VS Mode
  * Handles real-time communication with Go server
  *
- * Phase 1 Day 2 - Placeholder
- * Will be implemented in Phase 2
+ * Phase 3 - Real WebSocket implementation
  */
 
 export class WebSocketClient {
@@ -14,6 +13,8 @@ export class WebSocketClient {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 3000;
         this.messageHandlers = new Map();
+        this.roomCode = null;
+        this.playerName = null;
     }
 
     /**
@@ -22,21 +23,40 @@ export class WebSocketClient {
      * @param {string} playerName - Player display name
      */
     connect(roomCode, playerName) {
-        console.log(`[WebSocketClient] Connecting to ${this.serverUrl}...`);
+        this.roomCode = roomCode;
+        this.playerName = playerName;
 
-        // Placeholder - will implement actual WebSocket connection in Phase 2
+        console.log(`[WebSocketClient] Connecting to ${this.serverUrl}...`);
         console.log(`[WebSocketClient] Room: ${roomCode}, Player: ${playerName}`);
-        console.log('[WebSocketClient] Connection will be implemented in Phase 2');
 
         return new Promise((resolve, reject) => {
-            // Simulate successful connection for placeholder
-            setTimeout(() => {
-                console.log('[WebSocketClient] Placeholder connection successful');
-                resolve({
-                    success: true,
-                    message: 'Placeholder mode - no actual server connection'
-                });
-            }, 100);
+            try {
+                this.ws = new WebSocket(this.serverUrl);
+
+                this.ws.onopen = () => {
+                    console.log('[WebSocketClient] Connected successfully');
+                    this.reconnectAttempts = 0;
+
+                    // Send lobby_join message
+                    this.send('lobby_join', {
+                        roomCode: this.roomCode,
+                        playerName: this.playerName
+                    });
+
+                    resolve({ success: true });
+                };
+
+                this.ws.onmessage = (event) => this._handleMessage(event);
+                this.ws.onerror = (error) => {
+                    console.error('[WebSocketClient] Connection error:', error);
+                    reject(error);
+                };
+                this.ws.onclose = () => this._handleClose();
+
+            } catch (error) {
+                console.error('[WebSocketClient] Failed to create WebSocket:', error);
+                reject(error);
+            }
         });
     }
 
@@ -136,15 +156,15 @@ export class WebSocketClient {
         console.log('[WebSocketClient] Connection closed');
 
         // Attempt reconnect if not max attempts reached
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        if (this.reconnectAttempts < this.maxReconnectAttempts && this.roomCode && this.playerName) {
             this.reconnectAttempts++;
             console.log(`[WebSocketClient] Reconnecting... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
             setTimeout(() => {
-                this.connect();
+                this.connect(this.roomCode, this.playerName);
             }, this.reconnectDelay);
         } else {
-            console.error('[WebSocketClient] Max reconnect attempts reached');
+            console.error('[WebSocketClient] Max reconnect attempts reached or no room info');
         }
     }
 
