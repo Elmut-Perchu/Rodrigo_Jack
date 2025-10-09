@@ -79,6 +79,10 @@ export class GameVS extends Game {
         const { NicknameRenderSystem } = await import('./core/systems_vs/nickname_render_system.js');
         this.addSystem(new NicknameRenderSystem(this));
 
+        // Import and add PowerUpSystem (for power-up collection and effects)
+        const { PowerUpSystem } = await import('./core/systems_vs/powerup_system.js');
+        this.addSystem(new PowerUpSystem(this));
+
         console.log('[GameVS] VS systems added');
     }
 

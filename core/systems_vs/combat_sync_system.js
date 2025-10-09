@@ -71,18 +71,44 @@ export class CombatSyncSystem extends System {
      * @param {Object} sprite - Sprite component
      */
     sendAttack(attackType, position, sprite) {
+        const localPlayer = this.getLocalPlayer();
+
+        // Get damage multiplier from power-ups
+        let damageMultiplier = 1;
+        if (localPlayer) {
+            const powerupSystem = this.getPowerUpSystem();
+            if (powerupSystem) {
+                damageMultiplier = powerupSystem.getDamageMultiplier(localPlayer);
+            }
+        }
+
         const attackData = {
             attackType: attackType,
             x: position.x,
             y: position.y,
             direction: sprite.facingRight ? 'right' : 'left',
             facingRight: sprite.facingRight,
+            damageMultiplier: damageMultiplier,
             timestamp: Date.now()
         };
 
         this.game.networkClient.send('player_attack', attackData);
 
-        console.log(`[CombatSyncSystem] Sent ${attackType} attack at (${position.x.toFixed(0)}, ${position.y.toFixed(0)})`);
+        console.log(`[CombatSyncSystem] Sent ${attackType} attack (${damageMultiplier}x damage) at (${position.x.toFixed(0)}, ${position.y.toFixed(0)})`);
+    }
+
+    /**
+     * Get PowerUpSystem instance
+     * @private
+     * @returns {PowerUpSystem|null}
+     */
+    getPowerUpSystem() {
+        for (const system of this.game.systems) {
+            if (system.constructor.name === 'PowerUpSystem') {
+                return system;
+            }
+        }
+        return null;
     }
 
     /**

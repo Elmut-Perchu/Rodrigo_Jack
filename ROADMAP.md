@@ -306,17 +306,17 @@
 **Goal**: Power-ups, performance, testing, final polish
 
 ### Days 25-27: Power-Ups for VS
-- [ ] Add 2 new power-up types to `collectible_component.js`:
-  - [ ] `speed_boost` (+100 speed, 10s duration)
-  - [ ] `damage_up` (2x damage, 15s duration)
-- [ ] Update `pvp_arena.json` with power-up spawns
-- [ ] Implement power-up collection sync
-- [ ] Broadcast `powerup_collected` to all clients
-- [ ] Apply effects to player stats
+- [x] Add 2 new power-up types to `collectible_component.js`:
+  - [x] `speed_boost` (+100 speed, 10s duration)
+  - [x] `damage_up` (2x damage, 15s duration)
+- [x] Update `pvp_arena.json` with power-up spawns
+- [x] Implement power-up collection sync
+- [x] Broadcast `powerup_collected` to all clients
+- [x] Apply effects to player stats
 - [ ] Add visual feedback (glow, particle effect)
 - [ ] Add timer bar for temporary power-ups
 - [ ] Test power-ups work for all players
-- [ ] Commit: "VS: Power-ups implemented"
+- [x] Commit: "VS: Power-ups implemented"
 
 ### Days 28-30: Performance Optimization
 - [ ] Add FPS counter to UI (`performance.now()`)

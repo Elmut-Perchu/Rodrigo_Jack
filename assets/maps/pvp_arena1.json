@@ -53,24 +53,42 @@
         {
             "x": 15,
             "y": 11,
-            "type": "speed",
+            "type": "speed_boost",
             "respawnTime": 15000
         },
         {
             "x": 25,
             "y": 11,
-            "type": "damage",
+            "type": "damage_up",
             "respawnTime": 15000
+        },
+        {
+            "x": 10,
+            "y": 6,
+            "type": "speed_boost",
+            "respawnTime": 20000
+        },
+        {
+            "x": 30,
+            "y": 6,
+            "type": "damage_up",
+            "respawnTime": 20000
         },
         {
             "x": 20,
             "y": 5,
+            "type": "invincibility",
+            "respawnTime": 30000
+        },
+        {
+            "x": 10,
+            "y": 15,
             "type": "health",
             "respawnTime": 10000
         },
         {
-            "x": 20,
-            "y": 17,
+            "x": 30,
+            "y": 15,
             "type": "health",
             "respawnTime": 10000
         }

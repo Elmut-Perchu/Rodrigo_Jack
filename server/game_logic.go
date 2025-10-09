@@ -16,12 +16,13 @@ const (
 
 // AttackData represents an attack action
 type AttackData struct {
-	AttackerID  string     `json:"attackerId"`
-	AttackType  AttackType `json:"attackType"`
-	X           float64    `json:"x"`
-	Y           float64    `json:"y"`
-	Direction   string     `json:"direction"` // "left" or "right"
-	FacingRight bool       `json:"facingRight"`
+	AttackerID       string     `json:"attackerId"`
+	AttackType       AttackType `json:"attackType"`
+	X                float64    `json:"x"`
+	Y                float64    `json:"y"`
+	Direction        string     `json:"direction"` // "left" or "right"
+	FacingRight      bool       `json:"facingRight"`
+	DamageMultiplier float64    `json:"damageMultiplier"` // Power-up damage multiplier
 }
 
 // Attack ranges (in pixels)
@@ -58,7 +59,7 @@ func ProcessAttack(room *Room, attackData AttackData) {
 
 	// Apply damage to victims
 	for _, victim := range victims {
-		applyDamage(room, attacker, victim, attackData.AttackType)
+		applyDamage(room, attacker, victim, attackData.AttackType, attackData.DamageMultiplier)
 	}
 
 	// Broadcast attack to all players for visual effects
@@ -159,17 +160,23 @@ func isMagicHit(attackData AttackData, victim *Player, distance float64) bool {
 }
 
 // applyDamage applies damage to victim and broadcasts result
-func applyDamage(room *Room, attacker *Player, victim *Player, attackType AttackType) {
-	// Calculate damage
-	damage := 0
+func applyDamage(room *Room, attacker *Player, victim *Player, attackType AttackType, damageMultiplier float64) {
+	// Calculate base damage
+	baseDamage := 0
 	switch attackType {
 	case AttackMelee:
-		damage = MeleeDamage
+		baseDamage = MeleeDamage
 	case AttackArrow:
-		damage = ArrowDamage
+		baseDamage = ArrowDamage
 	case AttackMagic:
-		damage = MagicDamage
+		baseDamage = MagicDamage
 	}
+
+	// Apply damage multiplier from power-ups
+	if damageMultiplier <= 0 {
+		damageMultiplier = 1.0
+	}
+	damage := int(float64(baseDamage) * damageMultiplier)
 
 	// Apply damage
 	victim.Health -= damage
