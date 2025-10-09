@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            background-color: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #4ec9b0;
+        }
+        input, button {
+            padding: 8px 12px;
+            margin: 5px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        button {
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        button:hover {
+            background-color: #1177bb;
+        }
+        button:disabled {
+            background-color: #3e3e42;
+            cursor: not-allowed;
+        }
+        .log {
+            background-color: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 3px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px;
+        }
+        .log-sent { color: #4fc1ff; }
+        .log-received { color: #4ec9b0; }
+        .log-error { color: #f48771; }
+        .log-info { color: #dcdcaa; }
+        .status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-connected { background-color: #4ec9b0; }
+        .status-disconnected { background-color: #f48771; }
+        .status-connecting { background-color: #dcdcaa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 WebSocket Test Tool</h1>
+
+        <!-- Connection Section -->
+        <div class="section">
+            <h2>Connection</h2>
+            <div>
+                <span class="status status-disconnected" id="status-indicator"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+            <br>
+            <input type="text" id="room-code" placeholder="Room Code (e.g., ABCD)" maxlength="4" style="text-transform: uppercase;">
+            <input type="text" id="player-name" placeholder="Player Name" maxlength="12">
+            <button id="btn-connect">Connect</button>
+            <button id="btn-disconnect" disabled>Disconnect</button>
+        </div>
+
+        <!-- Actions Section -->
+        <div class="section">
+            <h2>Actions</h2>
+            <button id="btn-ready">Toggle Ready</button>
+            <input type="text" id="chat-message" placeholder="Chat message..." maxlength="100">
+            <button id="btn-send-chat">Send Chat</button>
+        </div>
+
+        <!-- Room State Section -->
+        <div class="section">
+            <h2>Room State</h2>
+            <div id="room-info" style="white-space: pre-wrap; color: #dcdcaa;"></div>
+        </div>
+
+        <!-- Log Section -->
+        <div class="section">
+            <h2>Message Log</h2>
+            <button onclick="document.getElementById('log').innerHTML = ''">Clear Log</button>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { WebSocketClient } from '../core/network/websocket_client.js';
+
+        let wsClient = null;
+        let isReady = false;
+        let roomState = {};
+
+        const elements = {
+            statusIndicator: document.getElementById('status-indicator'),
+            statusText: document.getElementById('status-text'),
+            roomCode: document.getElementById('room-code'),
+            playerName: document.getElementById('player-name'),
+            btnConnect: document.getElementById('btn-connect'),
+            btnDisconnect: document.getElementById('btn-disconnect'),
+            btnReady: document.getElementById('btn-ready'),
+            chatMessage: document.getElementById('chat-message'),
+            btnSendChat: document.getElementById('btn-send-chat'),
+            roomInfo: document.getElementById('room-info'),
+            log: document.getElementById('log')
+        };
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            elements.log.appendChild(entry);
+            elements.log.scrollTop = elements.log.scrollHeight;
+            console.log(`[${type.toUpperCase()}]`, message);
+        }
+
+        function updateStatus(status) {
+            elements.statusIndicator.className = `status status-${status}`;
+            elements.statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function updateRoomInfo() {
+            elements.roomInfo.textContent = JSON.stringify(roomState, null, 2);
+        }
+
+        // Connect button
+        elements.btnConnect.addEventListener('click', async () => {
+            const roomCode = elements.roomCode.value.trim().toUpperCase();
+            const playerName = elements.playerName.value.trim();
+
+            if (!roomCode || roomCode.length !== 4) {
+                alert('Please enter a valid 4-character room code');
+                return;
+            }
+
+            if (!playerName || playerName.length < 3) {
+                alert('Please enter a player name (3-12 characters)');
+                return;
+            }
+
+            try {
+                log(`Connecting to room ${roomCode} as ${playerName}...`, 'info');
+                updateStatus('connecting');
+
+                wsClient = new WebSocketClient();
+
+                // Register all message handlers
+                wsClient.on('lobby_joined', (data) => {
+                    log(`✅ LOBBY JOINED: ${JSON.stringify(data)}`, 'received');
+                    roomState = { ...roomState, ...data };
+                    updateRoomInfo();
+                });
+
+                wsClient.on('room_state', (data) => {
+                    log(`📊 ROOM STATE: ${JSON.stringify(data)}`, 'received');
+                    roomState = { ...roomState, ...data };
+                    updateRoomInfo();
+                });
+
+                wsClient.on('player_joined', (data) => {
+                    log(`👥 PLAYER JOINED: ${JSON.stringify(data)}`, 'received');
+                    updateRoomInfo();
+                });
+
+                wsClient.on('player_left', (data) => {
+                    log(`👋 PLAYER LEFT: ${JSON.stringify(data)}`, 'received');
+                    updateRoomInfo();
+                });
+
+                wsClient.on('player_ready', (data) => {
+                    log(`✋ PLAYER READY: ${JSON.stringify(data)}`, 'received');
+                });
+
+                wsClient.on('chat_message', (data) => {
+                    log(`💬 CHAT: [${data.playerName}] ${data.message}`, 'received');
+                });
+
+                wsClient.on('wait_timer_started', (data) => {
+                    log(`⏱️ WAIT TIMER: ${data.duration}s`, 'received');
+                });
+
+                wsClient.on('countdown_started', (data) => {
+                    log(`⏳ COUNTDOWN STARTED: ${data.remaining}s`, 'received');
+                });
+
+                wsClient.on('countdown_tick', (data) => {
+                    log(`⏳ COUNTDOWN: ${data.remaining}s`, 'received');
+                });
+
+                wsClient.on('countdown_cancelled', (data) => {
+                    log(`❌ COUNTDOWN CANCELLED`, 'received');
+                });
+
+                wsClient.on('game_starting', (data) => {
+                    log(`🎮 GAME STARTING!`, 'received');
+                });
+
+                wsClient.on('error', (data) => {
+                    log(`❌ ERROR: ${data.message}`, 'error');
+                });
+
+                await wsClient.connect(roomCode, playerName);
+
+                updateStatus('connected');
+                elements.btnConnect.disabled = true;
+                elements.btnDisconnect.disabled = false;
+                log('✅ Connected successfully!', 'info');
+
+            } catch (error) {
+                log(`❌ Connection failed: ${error}`, 'error');
+                updateStatus('disconnected');
+            }
+        });
+
+        // Disconnect button
+        elements.btnDisconnect.addEventListener('click', () => {
+            if (wsClient) {
+                wsClient.disconnect();
+                wsClient = null;
+                updateStatus('disconnected');
+                elements.btnConnect.disabled = false;
+                elements.btnDisconnect.disabled = true;
+                log('Disconnected', 'info');
+            }
+        });
+
+        // Ready button
+        elements.btnReady.addEventListener('click', () => {
+            if (!wsClient) return;
+
+            isReady = !isReady;
+            wsClient.send('lobby_ready', { isReady }, false);
+            log(`➡️ SENT lobby_ready: ${isReady}`, 'sent');
+            elements.btnReady.textContent = isReady ? 'Not Ready' : 'Toggle Ready';
+        });
+
+        // Send chat button
+        elements.btnSendChat.addEventListener('click', () => {
+            if (!wsClient) return;
+
+            const message = elements.chatMessage.value.trim();
+            if (message) {
+                wsClient.send('chat_message', { message }, false);
+                log(`➡️ SENT chat: ${message}`, 'sent');
+                elements.chatMessage.value = '';
+            }
+        });
+
+        // Enter key for chat
+        elements.chatMessage.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                elements.btnSendChat.click();
+            }
+        });
+
+        // Enter key for room code
+        elements.roomCode.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                elements.playerName.focus();
+            }
+        });
+
+        // Enter key for player name
+        elements.playerName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                elements.btnConnect.click();
+            }
+        });
+
+        // Auto-uppercase room code
+        elements.roomCode.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+        log('🔧 WebSocket Test Tool ready', 'info');
+        log('👉 Enter a room code and player name to start', 'info');
+    </script>
+</body>
+</html>
