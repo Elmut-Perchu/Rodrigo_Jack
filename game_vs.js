@@ -67,6 +67,10 @@ export class GameVS extends Game {
         const { NetworkSyncSystem } = await import('./core/systems_vs/network_sync_system.js');
         this.addSystem(new NetworkSyncSystem(this));
 
+        // Import and add CombatSyncSystem
+        const { CombatSyncSystem } = await import('./core/systems_vs/combat_sync_system.js');
+        this.addSystem(new CombatSyncSystem(this));
+
         console.log('[GameVS] VS systems added');
     }
 

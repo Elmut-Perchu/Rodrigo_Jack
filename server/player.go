@@ -111,6 +111,8 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handleChatMessage(msg)
 	case "player_state":
 		p.handlePlayerState(msg)
+	case "player_attack":
+		p.handlePlayerAttack(msg)
 	case "ping":
 		// Send pong with timestamp
 		p.sendMessage("pong", map[string]interface{}{
@@ -281,6 +283,43 @@ func (p *Player) handlePlayerState(msg *Message) {
 	p.Room.Broadcast("game_state_sync", map[string]interface{}{
 		"players": p.Room.GetAllPlayerStates(),
 	}, nil)
+}
+
+// handlePlayerAttack handles player attack actions
+func (p *Player) handlePlayerAttack(msg *Message) {
+	if p.Room == nil || !p.Room.IsGameActive {
+		return
+	}
+
+	if !p.IsAlive {
+		log.Printf("[Combat] Dead player %s attempted to attack", p.Name)
+		return
+	}
+
+	// Extract attack data
+	attackType, typeOk := msg.Data["attackType"].(string)
+	x, xOk := msg.Data["x"].(float64)
+	y, yOk := msg.Data["y"].(float64)
+	direction, dirOk := msg.Data["direction"].(string)
+	facingRight, facingOk := msg.Data["facingRight"].(bool)
+
+	if !typeOk || !xOk || !yOk || !dirOk || !facingOk {
+		log.Printf("[Combat] Invalid attack data from %s", p.Name)
+		return
+	}
+
+	// Create attack data
+	attackData := AttackData{
+		AttackerID:  p.ID,
+		AttackType:  AttackType(attackType),
+		X:           x,
+		Y:           y,
+		Direction:   direction,
+		FacingRight: facingRight,
+	}
+
+	// Process attack with server authority
+	ProcessAttack(p.Room, attackData)
 }
 
 // sendMessage sends a message to the player

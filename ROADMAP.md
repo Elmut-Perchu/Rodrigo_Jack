@@ -272,18 +272,18 @@
 - [x] Commit: "Network: Player sync system"
 
 ### Days 21-22: Combat Sync
-- [ ] Send attack messages (`player_attack`: type, direction)
-- [ ] Implement server-side hit detection in `server/game_logic.go`
-- [ ] Calculate distance between attacker and victims
-- [ ] Apply damage on server (authoritative)
-- [ ] Broadcast `player_hit` to all clients
-- [ ] Update health UI on clients
-- [ ] Handle `player_death` message
-- [ ] Implement respawn logic (if lives > 0)
+- [x] Send attack messages (`player_attack`: type, direction)
+- [x] Implement server-side hit detection in `server/game_logic.go`
+- [x] Calculate distance between attacker and victims
+- [x] Apply damage on server (authoritative)
+- [x] Broadcast `player_hit` to all clients
+- [x] Update health UI on clients
+- [x] Handle `player_death` message
+- [x] Implement respawn logic (if lives > 0)
 - [ ] Test melee attacks sync correctly
 - [ ] Test arrow attacks sync correctly
 - [ ] Test magic attack (V key) sync correctly
-- [ ] Commit: "Network: Combat sync with server authority"
+- [x] Commit: "Network: Combat sync with server authority"
 
 ### Days 23-24: Remote Player Rendering
 - [ ] Create `createRemotePlayer()` factory function

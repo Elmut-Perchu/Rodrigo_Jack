@@ -28,7 +28,70 @@ export class NetworkSyncSystem extends System {
         this.pingInterval = 1000; // Ping every second
         this.latency = 0;
 
+        // Register message handlers
+        this.registerHandlers();
+
         console.log('[NetworkSyncSystem] Initialized');
+    }
+
+    /**
+     * Register WebSocket message handlers
+     * @private
+     */
+    registerHandlers() {
+        if (!this.game.networkClient) return;
+
+        // Game state sync
+        this.game.networkClient.on('game_state_sync', (data) => {
+            this.handleGameStateSync(data);
+        });
+
+        // Pong for latency measurement
+        this.game.networkClient.on('pong', (data) => {
+            this.handlePong(data);
+        });
+
+        // Combat events (delegated to CombatSyncSystem)
+        this.game.networkClient.on('player_attack', (data) => {
+            const combatSystem = this.getCombatSystem();
+            if (combatSystem) combatSystem.handlePlayerAttack(data);
+        });
+
+        this.game.networkClient.on('player_hit', (data) => {
+            const combatSystem = this.getCombatSystem();
+            if (combatSystem) combatSystem.handlePlayerHit(data);
+        });
+
+        this.game.networkClient.on('player_death', (data) => {
+            const combatSystem = this.getCombatSystem();
+            if (combatSystem) combatSystem.handlePlayerDeath(data);
+        });
+
+        this.game.networkClient.on('match_end', (data) => {
+            const combatSystem = this.getCombatSystem();
+            if (combatSystem) combatSystem.handleMatchEnd(data);
+        });
+
+        this.game.networkClient.on('player_respawn', (data) => {
+            const combatSystem = this.getCombatSystem();
+            if (combatSystem) combatSystem.handlePlayerRespawn(data);
+        });
+
+        console.log('[NetworkSyncSystem] Message handlers registered');
+    }
+
+    /**
+     * Get CombatSyncSystem instance
+     * @private
+     * @returns {CombatSyncSystem|null}
+     */
+    getCombatSystem() {
+        for (const system of this.game.systems) {
+            if (system.constructor.name === 'CombatSyncSystem') {
+                return system;
+            }
+        }
+        return null;
     }
 
     update(deltaTime) {
