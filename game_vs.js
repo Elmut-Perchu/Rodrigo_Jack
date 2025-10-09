@@ -71,6 +71,14 @@ export class GameVS extends Game {
         const { CombatSyncSystem } = await import('./core/systems_vs/combat_sync_system.js');
         this.addSystem(new CombatSyncSystem(this));
 
+        // Import and add InterpolationSystem (for smooth remote player movement)
+        const { InterpolationSystem } = await import('./core/systems_vs/interpolation_system.js');
+        this.addSystem(new InterpolationSystem(this));
+
+        // Import and add NicknameRenderSystem (for player name display)
+        const { NicknameRenderSystem } = await import('./core/systems_vs/nickname_render_system.js');
+        this.addSystem(new NicknameRenderSystem(this));
+
         console.log('[GameVS] VS systems added');
     }
 

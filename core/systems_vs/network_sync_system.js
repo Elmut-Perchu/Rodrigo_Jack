@@ -336,38 +336,21 @@ export class NetworkSyncSystem extends System {
     /**
      * Create remote player entity
      * @param {Object} playerData - Player data from server
+     * @param {number} playerIndex - Player index for color assignment
      * @returns {Entity}
      */
-    createRemotePlayer(playerData) {
-        // Import createRemotePlayer factory (will be created in Days 23-24)
-        // For now, create basic entity
-        const { Entity } = require('../entities/entity.js');
-        const entity = new Entity();
+    async createRemotePlayer(playerData, playerIndex = 0) {
+        // Import createRemotePlayer factory
+        const { createRemotePlayer } = await import('../../create/remote_player_create.js');
 
-        // Add network component
-        entity.addComponent('networkPlayer', {
-            playerId: playerData.playerId,
-            playerName: playerData.playerName,
-            isLocal: false
-        });
-
-        // Add position component
-        entity.addComponent('position', {
-            x: playerData.x || 0,
-            y: playerData.y || 0
-        });
-
-        // Add velocity component
-        entity.addComponent('velocity', {
-            vx: 0,
-            vy: 0
-        });
+        // Create entity with factory
+        const entity = createRemotePlayer(playerData, playerIndex);
 
         // Add to game
         this.game.entities.add(entity);
         this.game.players.set(playerData.playerId, entity);
 
-        console.log(`[NetworkSyncSystem] Created remote player: ${playerData.playerName}`);
+        console.log(`[NetworkSyncSystem] Created remote player: ${playerData.playerName} (index: ${playerIndex})`);
 
         return entity;
     }

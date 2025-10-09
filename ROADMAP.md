@@ -286,16 +286,16 @@
 - [x] Commit: "Network: Combat sync with server authority"
 
 ### Days 23-24: Remote Player Rendering
-- [ ] Create `createRemotePlayer()` factory function
-- [ ] Use different sprite colors per player (P1=red, P2=blue, etc.)
-- [ ] Sync animation states across clients
-- [ ] Implement facing direction sync (facingRight boolean)
-- [ ] Add lag compensation (extrapolation if > 100ms lag)
-- [ ] Add prediction error correction smoothing
-- [ ] Display player nicknames above sprites
+- [x] Create `createRemotePlayer()` factory function
+- [x] Use different sprite colors per player (P1=red, P2=blue, etc.)
+- [x] Sync animation states across clients
+- [x] Implement facing direction sync (facingRight boolean)
+- [x] Add lag compensation (extrapolation if > 100ms lag)
+- [x] Add prediction error correction smoothing
+- [x] Display player nicknames above sprites
 - [ ] Test with 4 players simultaneously
 - [ ] Test with simulated lag (Chrome DevTools Network throttling)
-- [ ] Commit: "Network: Remote player rendering complete"
+- [x] Commit: "Network: Remote player rendering complete"
 
 **Deliverables**: ✅ Players see each other move, ✅ Combat works, ✅ Smooth sync
 
