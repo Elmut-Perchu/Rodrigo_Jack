@@ -207,6 +207,45 @@
 
 ---
 
+## 🔴 PROBLÈMES ACTUELS À RÉSOUDRE (Janvier 2025)
+
+### 🚨 Problème #1: Respawn continu des joueurs
+**Symptôme**: Les joueurs réapparaissent continuellement après leur mort
+**Impact**: Impossible de terminer un match
+**Tâches**:
+- [ ] Désactiver respawn automatique en mode VS
+- [ ] Implémenter système de vie unique (ou 3 vies max)
+- [ ] Player éliminé devient spectateur
+- [ ] Match se termine quand il reste 1 joueur
+
+### 🚨 Problème #2: Trop de joueurs créés
+**Symptôme**: Plus de joueurs dans le jeu que de clients connectés
+**Impact**: Joueurs fantômes, confusion
+**Tâches**:
+- [ ] Vérifier `handleRoomState()` - pas de duplication
+- [ ] Vérifier `player_joined` - ne pas recréer existants
+- [ ] Limiter strictement au nombre de joueurs dans `room_state`
+- [ ] Nettoyer joueurs lors de `player_left`
+
+### 🚨 Problème #3: Pas de synchronisation WebSocket des mouvements
+**Symptôme**: Chaque navigateur est un jeu indépendant
+**Impact**: CRITIQUE - Le mode VS ne fonctionne pas
+**Description**:
+- Navigateur A: je bouge mon joueur, il bouge localement ✅
+- Navigateur B: je ne vois PAS le joueur de A bouger ❌
+- Les autres joueurs apparaissent comme des statues/IA
+
+**Tâches**:
+- [ ] **Input System**: Envoyer inputs au serveur (WASD, attaques)
+- [ ] **Server**: Broadcaster `player_move` à tous les clients
+- [ ] **NetworkSyncSystem**: Recevoir `game_state_sync` et mettre à jour positions
+- [ ] **InterpolationSystem**: Interpoler mouvements pour fluidité
+- [ ] Test: Mouvement d'un joueur visible sur l'autre navigateur
+- [ ] Test: Attaques synchronisées
+- [ ] Test: Mort/respawn synchronisés
+
+---
+
 ## 🟡 Phase 3: Frontend VS (Week 2-3 - Days 11-17)
 
 **Goal**: VS lobby and game pages with UI
@@ -237,18 +276,18 @@
 - [x] Test page loads correctly after lobby countdown
 - [x] Commit: "Frontend: VS game page setup"
 
-### Days 16-17: Game WebSocket Connection & Player Entities (CRITICAL - MISSING)
-**🚨 CRITICAL BLOCKER**: game_vs.js ne se connecte pas au WebSocket après redirection!
+### Days 16-17: Game WebSocket Connection & Player Entities ✅ COMPLETE
+**Status**: Résolu - Les joueurs apparaissent et bougent avec collision
 
-- [ ] **Prerequisite**: Modify `views/vs_lobby.html` line 333:
-  - [ ] Store playerName in sessionStorage before redirect: `sessionStorage.setItem('vsPlayerName', this.playerName);`
-- [ ] Import `WebSocketClient` in game_vs.js
-- [ ] Create `connectToServer()` method in GameVS class:
-  - [ ] Get playerName from sessionStorage (or prompt if missing)
-  - [ ] Create `this.networkClient = new WebSocketClient()`
-  - [ ] Call `await this.networkClient.connect(roomCode, playerName)`
-  - [ ] Clear sessionStorage after retrieval
-- [ ] Create `setupNetworkHandlers()` method:
+- [x] **Prerequisite**: Modify `views/vs_lobby.html` line 333:
+  - [x] Store playerName in sessionStorage before redirect: `sessionStorage.setItem('vsPlayerName', this.playerName);`
+- [x] Import `WebSocketClient` in game_vs.js
+- [x] Create `connectToServer()` method in GameVS class:
+  - [x] Get playerName from sessionStorage (or prompt if missing)
+  - [x] Create `this.networkClient = new WebSocketClient()`
+  - [x] Call `await this.networkClient.connect(roomCode, playerName)`
+  - [x] Clear sessionStorage after retrieval
+- [x] Create `setupNetworkHandlers()` method:
   - [ ] Handler: `lobby_joined` → store `this.localPlayerId` and `this.isHost`
   - [ ] Handler: `room_state` → call `handleRoomState(data)` to create all players
   - [ ] Handler: `player_joined` → call `handlePlayerJoined(data)` to create new player

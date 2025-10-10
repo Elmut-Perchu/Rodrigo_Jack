@@ -97,6 +97,9 @@ export class NetworkSyncSystem extends System {
         });
 
         console.log('[NetworkSyncSystem] Message handlers registered');
+
+        // Mark handlers as ready to process queued messages
+        this.game.networkClient.markHandlersReady();
     }
 
     /**

@@ -22,6 +22,10 @@ export class WebSocketClient {
         this.batchInterval = 16; // ~60fps (16ms)
         this.batchTimer = null;
         this.connected = false;
+
+        // Message queue for early messages (before handlers registered)
+        this.earlyMessageQueue = [];
+        this.handlersReady = false;
     }
 
     /**
@@ -201,6 +205,33 @@ export class WebSocketClient {
     }
 
     /**
+     * Mark handlers as ready and process queued messages
+     * Called by NetworkSyncSystem after all handlers are registered
+     */
+    markHandlersReady() {
+        if (this.handlersReady) {
+            console.warn('[WebSocketClient] markHandlersReady() called multiple times');
+            return;
+        }
+
+        console.log(`[WebSocketClient] Handlers ready, processing ${this.earlyMessageQueue.length} queued messages`);
+        this.handlersReady = true;
+
+        // Process all queued messages in order
+        for (const message of this.earlyMessageQueue) {
+            const handlers = this.messageHandlers.get(message.type);
+            if (handlers) {
+                console.log(`[WebSocketClient] Processing queued message: ${message.type}`);
+                handlers.forEach(handler => handler(message.data));
+            }
+        }
+
+        // Clear queue to free memory
+        this.earlyMessageQueue = [];
+        console.log('[WebSocketClient] Message queue processed and cleared');
+    }
+
+    /**
      * Handle incoming message
      * @private
      */
@@ -209,9 +240,24 @@ export class WebSocketClient {
             const message = JSON.parse(event.data);
             console.log('[WebSocketClient] Received:', message);
 
+            // Queue messages if handlers not ready yet
+            if (!this.handlersReady) {
+                console.log('[WebSocketClient] Queueing early message:', message.type);
+                this.earlyMessageQueue.push(message);
+
+                // Prevent queue overflow (max 100 messages)
+                if (this.earlyMessageQueue.length > 100) {
+                    console.warn('[WebSocketClient] Message queue full, dropping oldest');
+                    this.earlyMessageQueue.shift();
+                }
+                return;
+            }
+
             const handlers = this.messageHandlers.get(message.type);
             if (handlers) {
                 handlers.forEach(handler => handler(message.data));
+            } else {
+                console.warn(`[WebSocketClient] No handler for message type: ${message.type}`);
             }
         } catch (error) {
             console.error('[WebSocketClient] Error handling message:', error);

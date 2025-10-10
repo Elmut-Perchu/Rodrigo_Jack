@@ -37,8 +37,48 @@ export class GameVS extends Game {
         // Initialization flags
         this.playersReady = false;
 
-        console.log('[GameVS] VS Mode game instance created');
-        console.log('[GameVS] Mode:', this.mode);
+        // Initialization timestamp for detailed logging
+        this.initStartTime = performance.now();
+
+        this.logWithTimestamp('[GameVS] VS Mode game instance created');
+        this.logWithTimestamp(`[GameVS] Mode: ${this.mode}`);
+    }
+
+    /**
+     * Log with timestamp (milliseconds since init)
+     * @param {string} message - Log message
+     * @private
+     */
+    logWithTimestamp(message) {
+        const elapsed = (performance.now() - this.initStartTime).toFixed(1);
+        console.log(`[${elapsed}ms] ${message}`);
+    }
+
+    /**
+     * Update loading step UI
+     * @param {string} stepId - Step ID (init, adventure, map, server, systems, players)
+     * @param {string} status - Status ('pending', 'in_progress', 'completed', 'error')
+     * @private
+     */
+    updateLoadingStep(stepId, status) {
+        const iconId = `icon-${stepId}`;
+        const iconElement = document.getElementById(iconId);
+
+        if (!iconElement) return;
+
+        switch (status) {
+            case 'in_progress':
+                iconElement.textContent = '🔄';
+                break;
+            case 'completed':
+                iconElement.textContent = '✅';
+                break;
+            case 'error':
+                iconElement.textContent = '❌';
+                break;
+            default:
+                iconElement.textContent = '⏳';
+        }
     }
 
     /**
@@ -51,42 +91,67 @@ export class GameVS extends Game {
             this.roomCode = roomCode;
             this.isHost = isHost;
 
-            console.log(`[GameVS] Initializing VS mode - Room: ${roomCode}, Host: ${isHost}`);
+            this.logWithTimestamp(`[GameVS] Initializing VS mode - Room: ${roomCode}, Host: ${isHost}`);
+            this.updateLoadingStep('init', 'completed');
 
             // Get player name from sessionStorage
             this.playerName = sessionStorage.getItem('vsPlayerName') || 'Player';
             sessionStorage.removeItem('vsPlayerName');
 
-            console.log(`[GameVS] Player name: ${this.playerName}`);
+            this.logWithTimestamp(`[GameVS] Player name: ${this.playerName}`);
 
             // Disable Adventure-specific features
-            console.log('[GameVS] Step 1: Disabling adventure features');
+            this.logWithTimestamp('[GameVS] Step 1: Disabling adventure features');
+            this.updateLoadingStep('adventure', 'in_progress');
             this.disableAdventureFeatures();
+            this.updateLoadingStep('adventure', 'completed');
+            this.logWithTimestamp('[GameVS] Adventure features disabled');
 
             // Load VS battle map FIRST (before WebSocket)
-            console.log('[GameVS] Step 2: Loading VS map');
+            this.logWithTimestamp('[GameVS] Step 2: Loading VS map');
+            this.updateLoadingStep('map', 'in_progress');
             await this.loadVSMap();
+            this.updateLoadingStep('map', 'completed');
+            this.logWithTimestamp('[GameVS] VS map loaded');
 
             // Connect to WebSocket server (CRITICAL!)
-            console.log('[GameVS] Step 3: Connecting to server');
+            this.logWithTimestamp('[GameVS] Step 3: Connecting to server');
+            this.updateLoadingStep('server', 'in_progress');
             await this.connectToServer();
+            this.updateLoadingStep('server', 'completed');
+            this.logWithTimestamp('[GameVS] Server connected');
 
             // Add VS-specific systems (NetworkSyncSystem needs networkClient)
-            console.log('[GameVS] Step 4: Adding VS systems');
+            this.logWithTimestamp('[GameVS] Step 4: Adding VS systems');
+            this.updateLoadingStep('systems', 'in_progress');
             await this.addVSSystems();
+            this.updateLoadingStep('systems', 'completed');
+            this.logWithTimestamp('[GameVS] VS systems added');
 
             // Wait for all players to be created
-            console.log('[GameVS] Step 5: Waiting for players');
+            this.logWithTimestamp('[GameVS] Step 5: Waiting for players');
+            this.updateLoadingStep('players', 'in_progress');
             await this.waitForPlayers();
+            this.updateLoadingStep('players', 'completed');
+            this.logWithTimestamp('[GameVS] Players ready');
 
             // Unpause game to start rendering and gameplay
             this.paused = false;
-            console.log('[GameVS] Game unpaused - match started!');
+            this.logWithTimestamp('[GameVS] Game unpaused - match started!');
         } catch (error) {
             console.error('[GameVS] CRITICAL ERROR in initializeVSMode:', error);
             console.error('[GameVS] Error name:', error?.name);
             console.error('[GameVS] Error message:', error?.message);
             console.error('[GameVS] Error stack:', error?.stack);
+
+            // Mark all steps as error
+            ['adventure', 'map', 'server', 'systems', 'players'].forEach(step => {
+                const element = document.getElementById(`icon-${step}`);
+                if (element && element.textContent !== '✅') {
+                    this.updateLoadingStep(step, 'error');
+                }
+            });
+
             throw error;
         }
     }
@@ -105,9 +170,8 @@ export class GameVS extends Game {
         const { CombatSyncSystem } = await import('./core/systems_vs/combat_sync_system.js');
         this.addSystem(new CombatSyncSystem(this));
 
-        // Import and add InterpolationSystem (for smooth remote player movement)
-        const { InterpolationSystem } = await import('./core/systems_vs/interpolation_system.js');
-        this.addSystem(new InterpolationSystem(this));
+        // NOTE: InterpolationSystem removed - NetworkSyncSystem has built-in interpolation
+        // The NetworkSyncSystem handles interpolation in updateRemotePlayers() and interpolateRemotePlayer()
 
         // Import and add NicknameRenderSystem (for player name display)
         const { NicknameRenderSystem } = await import('./core/systems_vs/nickname_render_system.js');
@@ -160,6 +224,53 @@ export class GameVS extends Game {
         if (audioSystem) {
             this.systems.delete(audioSystem);
             console.log('[GameVS] Audio system disabled');
+        }
+
+        // CRITICAL: Disable enemy AI (remote players are NOT enemies!)
+        const enemyBehaviorSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'EnemyBehavior'
+        );
+        if (enemyBehaviorSystem) {
+            this.systems.delete(enemyBehaviorSystem);
+            console.log('[GameVS] Enemy behavior system disabled');
+        }
+
+        // Disable bow/arrow systems (VS has different combat)
+        const bowSystems = ['BowInputSystem', 'BowChargeSystem', 'ArrowSpawnSystem',
+                           'ArrowPhysicsSystem', 'ArrowCollisionSystem', 'ArrowImpactSystem',
+                           'ArrowPickupSystem'];
+        bowSystems.forEach(systemName => {
+            const system = Array.from(this.systems).find(s => s.constructor.name === systemName);
+            if (system) {
+                this.systems.delete(system);
+                console.log(`[GameVS] ${systemName} disabled`);
+            }
+        });
+
+        // Disable Adventure combat system (replaced by CombatSyncSystem)
+        const combatSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'Combat'
+        );
+        if (combatSystem) {
+            this.systems.delete(combatSystem);
+            console.log('[GameVS] Combat system disabled (using CombatSyncSystem)');
+        }
+
+        // Disable damage/health systems (server-authoritative in VS mode)
+        const damageSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'Damage'
+        );
+        if (damageSystem) {
+            this.systems.delete(damageSystem);
+            console.log('[GameVS] Damage system disabled (server-authoritative)');
+        }
+
+        const healthSystem = Array.from(this.systems).find(
+            s => s.constructor.name === 'Health'
+        );
+        if (healthSystem) {
+            this.systems.delete(healthSystem);
+            console.log('[GameVS] Health system disabled (server-authoritative)');
         }
 
         // Disable camera following - configure static camera
@@ -274,6 +385,12 @@ export class GameVS extends Game {
         for (let i = 0; i < data.players.length; i++) {
             const playerData = data.players[i];
 
+            // Skip if player already exists (prevent duplicates)
+            if (this.players.has(playerData.playerId)) {
+                console.log(`[GameVS] Player ${playerData.playerId} already exists, skipping`);
+                continue;
+            }
+
             if (playerData.playerId === this.localPlayerId) {
                 // Create local player (controllable)
                 await this.createLocalPlayer(playerData, i);
@@ -293,6 +410,12 @@ export class GameVS extends Game {
     async handlePlayerJoined(data) {
         // Skip if it's the local player (already created)
         if (data.playerId === this.localPlayerId) return;
+
+        // Skip if player already exists (prevent duplicates)
+        if (this.players.has(data.playerId)) {
+            console.log(`[GameVS] Player ${data.playerId} already exists, skipping`);
+            return;
+        }
 
         console.log('[GameVS] Creating new remote player:', data.playerName);
 

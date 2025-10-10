@@ -4,6 +4,12 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Cache Control - Force browser to reload JS files on every load (dev mode) -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
     <link rel="stylesheet" href="../style.css" />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <title>VS Mode - Battle Arena</title>
@@ -241,6 +247,28 @@
         <div class="loading-screen" id="loading-screen">
             <div class="loading-text">Loading Battle Arena...</div>
             <div class="loading-spinner"></div>
+
+            <!-- Loading Steps -->
+            <div style="margin-top: 40px; text-align: left; font-size: 10px; color: #95a5a6; max-width: 400px;">
+                <div id="step-init" style="margin-bottom: 10px;">
+                    <span id="icon-init">⏳</span> Initializing game...
+                </div>
+                <div id="step-adventure" style="margin-bottom: 10px;">
+                    <span id="icon-adventure">⏳</span> Disabling adventure features...
+                </div>
+                <div id="step-map" style="margin-bottom: 10px;">
+                    <span id="icon-map">⏳</span> Loading VS battle map...
+                </div>
+                <div id="step-server" style="margin-bottom: 10px;">
+                    <span id="icon-server">⏳</span> Connecting to server...
+                </div>
+                <div id="step-systems" style="margin-bottom: 10px;">
+                    <span id="icon-systems">⏳</span> Adding VS systems...
+                </div>
+                <div id="step-players" style="margin-bottom: 10px;">
+                    <span id="icon-players">⏳</span> Waiting for players...
+                </div>
+            </div>
         </div>
 
         <!-- Game Container -->
