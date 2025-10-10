@@ -12,6 +12,7 @@ export class Render extends System {
             const visual = entity.getComponent('visual');
             const position = entity.getComponent('position');
             const hitbox = entity.getComponent('circle_hitbox');
+            const networkPlayer = entity.getComponent('networkPlayer'); // NEW: For debug logging
 
             // Check required components first
             if (!position || !visual) return;
@@ -24,9 +25,14 @@ export class Render extends System {
                 if (currentLeft !== position.x || currentTop !== position.y) {
                     visual.div.style.left = `${position.x}px`;
                     visual.div.style.top = `${position.y}px`;
-                    // Debug: Log first position update
-                    if (currentLeft === 0 && currentTop === 0 && (position.x !== 0 || position.y !== 0)) {
-                        console.log(`[RenderSystem] Updated position for entity ${entity.uuid.substring(0, 8)}: (${currentLeft},${currentTop}) → (${position.x},${position.y})`);
+                    // Debug: Log position update for network players
+                    if (networkPlayer && !networkPlayer.isLocal) {
+                        // Only log significant movements (>10px) to avoid spam
+                        const deltaX = Math.abs(currentLeft - position.x);
+                        const deltaY = Math.abs(currentTop - position.y);
+                        if (deltaX > 10 || deltaY > 10) {
+                            console.log(`[RenderSystem] Remote player "${networkPlayer.playerName}" moved: (${currentLeft},${currentTop}) → (${position.x},${position.y})`);
+                        }
                     }
                 }
                 return;
@@ -34,6 +40,12 @@ export class Render extends System {
 
             // Skip if already in DOM via UUID check
             if (document.querySelector(`[uuid="${entity.uuid}"]`)) return;
+
+            // Debug: Log initial rendering for network players
+            if (networkPlayer) {
+                const playerType = networkPlayer.isLocal ? 'Local' : 'Remote';
+                console.log(`[RenderSystem] ${playerType} player "${networkPlayer.playerName}" initial render at (${position.x}, ${position.y})`);
+            }
 
             // Create and style the entity's div
             visual.div.setAttribute('uuid', entity.uuid);
@@ -45,7 +57,7 @@ export class Render extends System {
             if (visual.bgColor) visual.div.style.backgroundColor = visual.bgColor;
 
             // hitbox
-            if (hitbox) {
+            if (hitbox && hitbox.circles && hitbox.circles.collision) {
                 hitbox.circles.collision.setAttribute('uuid', entity.uuid);
                 this.gameWorld.appendChild(hitbox.circles.collision)
                 hitbox.circles.melee.setAttribute('uuid', entity.uuid);

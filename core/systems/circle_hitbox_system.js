@@ -11,7 +11,7 @@ export class CircleHitbox extends System {
         // Réinitialiser toutes les collisions au début de l'update
         this.entities.forEach(entity => {
             const property = entity.getComponent('property');
-            if (property) {
+            if (property && property.collidingWith) {
                 property.isCollided = false;
                 property.collidingWith.clear(); // Vider la liste des collisions
             }

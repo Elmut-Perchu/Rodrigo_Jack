@@ -240,6 +240,9 @@ func handleMatchEnd(room *Room, winner *Player) {
 	room.IsGameActive = false
 	room.mu.Unlock()
 
+	// Stop game loop
+	room.StopGameLoop()
+
 	winnerData := map[string]interface{}{
 		"reason": "last_standing",
 	}

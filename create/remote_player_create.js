@@ -6,6 +6,8 @@
  */
 
 import { Entity } from '../core/entities/entity.js';
+import { CircleHitbox } from '../core/components/circle_hitbox_component.js';
+import { Visual } from '../core/components/visual_component.js';
 
 /**
  * Player color palette (P1=red, P2=blue, P3=green, P4=yellow)
@@ -47,8 +49,11 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
         vy: playerData.vy || 0
     });
 
-    // Sprite component with player color
+    // Visual component (required for rendering)
     const color = PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
+    entity.addComponent('visual', new Visual(null, 110, 110));
+
+    // Sprite component with player color
     entity.addComponent('sprite', {
         src: 'assets/sprites/player_sheet.png',
         width: 16,
@@ -112,15 +117,25 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
     entity.addComponent('property', {
         type: 'remote_player',
         team: playerIndex,
-        isAlive: playerData.isAlive !== undefined ? playerData.isAlive : true
+        isAlive: playerData.isAlive !== undefined ? playerData.isAlive : true,
+        movable: true,
+        speed: 450,
+        solid: false,
+        jumpStrength: 425,
+        applyGravity: true,
+        isOnGround: false,
+        isCollided: false,
+        collidingWith: new Set()
     });
 
     // Circle hitbox component
-    entity.addComponent('circleHitbox', {
-        radius: 8,
-        offsetX: 0,
-        offsetY: 0
-    });
+    entity.addComponent('circle_hitbox', new CircleHitbox(
+        0,   // offsetX
+        24,  // offsetY
+        26,  // collisionRadius
+        60,  // meleeRadius
+        300  // rangedRadius
+    ));
 
     // Nickname component (for UI rendering)
     entity.addComponent('nickname', {
@@ -248,6 +263,10 @@ export function createLocalPlayer(playerData, playerIndex = 0) {
     if (interpolation) {
         interpolation.enabled = false;
     }
+
+    // CRITICAL: DO NOT add camera component in VS mode
+    // Camera following is disabled in VS - we want static arena view
+    // The camera component will be removed by game_vs.js:disableAdventureFeatures()
 
     console.log(`[LocalPlayer] Created local player ${playerData.playerName} (${getPlayerColor(playerIndex).name})`);
 

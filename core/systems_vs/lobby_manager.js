@@ -131,7 +131,7 @@ export class LobbyManager {
         try {
             console.log('[LobbyManager] Connecting to server...');
 
-            // Setup message handlers
+            // Setup message handlers BEFORE connecting
             this.wsClient.on('lobby_joined', (data) => this.handleLobbyJoined(data));
             this.wsClient.on('room_state', (data) => this.handleRoomState(data));
             this.wsClient.on('player_joined', (data) => this.handlePlayerJoined(data));
@@ -145,7 +145,13 @@ export class LobbyManager {
             this.wsClient.on('game_starting', (data) => this.handleGameStarting(data));
             this.wsClient.on('error', (data) => this.handleError(data));
 
-            // Connect
+            console.log('[LobbyManager] Message handlers registered');
+
+            // Mark handlers ready to process queued messages
+            this.wsClient.markHandlersReady();
+            console.log('[LobbyManager] Handlers marked as ready');
+
+            // Connect to server
             await this.wsClient.connect(this.roomCode, this.playerName);
             console.log('[LobbyManager] Connected successfully');
 

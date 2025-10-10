@@ -8,17 +8,20 @@ import (
 
 // Room represents a game lobby/room
 type Room struct {
-	Code              string             `json:"code"`
-	Players           map[string]*Player `json:"players"`
-	MaxPlayers        int                `json:"maxPlayers"`
-	Host              *Player            `json:"-"`
-	IsGameActive      bool               `json:"isGameActive"`
-	WaitTimer         *time.Timer        `json:"-"`
-	CountdownTimer    *time.Timer        `json:"-"`
-	CountdownActive   bool               `json:"countdownActive"`
+	Code               string             `json:"code"`
+	Players            map[string]*Player `json:"players"`
+	MaxPlayers         int                `json:"maxPlayers"`
+	Host               *Player            `json:"-"`
+	IsGameActive       bool               `json:"isGameActive"`
+	WaitTimer          *time.Timer        `json:"-"`
+	CountdownTimer     *time.Timer        `json:"-"`
+	CountdownActive    bool               `json:"countdownActive"`
 	CountdownRemaining int                `json:"countdownRemaining"`
-	countdownCancel   chan struct{}      // Channel to cancel countdown goroutine
-	mu                sync.RWMutex
+	countdownCancel    chan struct{}      // Channel to cancel countdown goroutine
+	// Game loop fields
+	currentTick  uint64        // Server tick counter
+	stopGameLoop chan struct{} // Channel to stop game loop
+	mu           sync.RWMutex
 }
 
 // RoomManager manages all active rooms
@@ -293,6 +296,9 @@ func (r *Room) startGameLocked() {
 	r.broadcastLocked("game_starting", map[string]interface{}{
 		"roomCode": r.Code,
 	}, nil)
+
+	// Start authoritative server game loop (20Hz tick rate)
+	go r.StartGameLoop()
 }
 
 // GetAllPlayerStates returns all player states for sync
@@ -484,6 +490,9 @@ func (r *Room) checkReadyState() {
 func (r *Room) cleanup() {
 	log.Printf("[Room] Cleaning up room %s", r.Code)
 
+	// Stop game loop if active
+	r.StopGameLoop()
+
 	// Stop wait timer if active
 	if r.WaitTimer != nil {
 		r.WaitTimer.Stop()
@@ -504,6 +513,7 @@ func (r *Room) cleanup() {
 
 	r.CountdownActive = false
 	r.CountdownRemaining = 0
+	r.IsGameActive = false
 
 	log.Printf("[Room] Room %s cleaned up successfully", r.Code)
 }

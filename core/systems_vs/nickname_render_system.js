@@ -13,16 +13,25 @@ export class NicknameRenderSystem extends System {
 
         this.canvas = null;
         this.ctx = null;
+        this.setupAttempted = false;
+        this.setupWarningShown = false;
 
         console.log('[NicknameRenderSystem] Initialized');
     }
 
     update(deltaTime) {
+        // Try to setup canvas if not ready
         if (!this.canvas || !this.ctx) {
             this.setupCanvas();
         }
 
-        if (!this.canvas || !this.ctx) return;
+        // Skip rendering if canvas still not ready (don't spam console)
+        if (!this.canvas || !this.ctx) {
+            return; // Canvas not ready yet, will retry next frame
+        }
+
+        // Clear canvas before rendering (prevent ghosting)
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Render all player nicknames
         for (const entity of this.game.entities) {
@@ -42,6 +51,14 @@ export class NicknameRenderSystem extends System {
      * @private
      */
     setupCanvas() {
+        // Prevent multiple setup attempts from spamming console
+        if (this.setupAttempted && !this.canvas) {
+            // Already tried and failed, don't spam console
+            return;
+        }
+
+        this.setupAttempted = true;
+
         // Find canvas by ID (vs_game.html) or inside .game-world (adventure mode)
         this.canvas = document.getElementById('nickname-canvas');
 
@@ -54,7 +71,13 @@ export class NicknameRenderSystem extends System {
         }
 
         if (!this.canvas) {
-            console.warn('[NicknameRenderSystem] Canvas not found - neither #nickname-canvas nor .game-world canvas exists');
+            // Only log warning once (not every frame)
+            if (!this.setupWarningShown) {
+                console.warn('[NicknameRenderSystem] Canvas not found - will retry on next frame');
+                this.setupWarningShown = true;
+            }
+            // Reset setupAttempted so we can retry on next frame
+            this.setupAttempted = false;
             return;
         }
 
@@ -71,6 +94,7 @@ export class NicknameRenderSystem extends System {
             if (this.canvas) {
                 this.canvas.width = window.innerWidth;
                 this.canvas.height = window.innerHeight;
+                console.log(`[NicknameRenderSystem] Canvas resized to ${this.canvas.width}x${this.canvas.height}`);
             }
         });
     }

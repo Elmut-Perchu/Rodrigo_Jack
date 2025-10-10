@@ -354,13 +354,16 @@ export class Game {
     }
 
     removeEntity(entity) {
-        // Vérifier si l'entité est un ennemi ou un collectible avant de la supprimer
-        if (entity.getComponent('health') && !entity.getComponent('input')) {
-            // C'est un ennemi
-            this.levelState.deadEnemies.add(entity.uuid);
-        } else if (entity.getComponent('collectible')) {
-            // C'est un collectible
-            this.levelState.collectedItems.add(entity.uuid);
+        // Skip levelState tracking in VS mode (levelState is null)
+        if (this.levelState) {
+            // Vérifier si l'entité est un ennemi ou un collectible avant de la supprimer
+            if (entity.getComponent('health') && !entity.getComponent('input')) {
+                // C'est un ennemi
+                this.levelState.deadEnemies.add(entity.uuid);
+            } else if (entity.getComponent('collectible')) {
+                // C'est un collectible
+                this.levelState.collectedItems.add(entity.uuid);
+            }
         }
 
         const divs = document.querySelectorAll(`[uuid="${entity.uuid}"]`);

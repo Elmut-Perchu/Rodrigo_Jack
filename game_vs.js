@@ -114,22 +114,29 @@ export class GameVS extends Game {
             this.updateLoadingStep('map', 'completed');
             this.logWithTimestamp('[GameVS] VS map loaded');
 
-            // Connect to WebSocket server (CRITICAL!)
-            this.logWithTimestamp('[GameVS] Step 3: Connecting to server');
-            this.updateLoadingStep('server', 'in_progress');
-            await this.connectToServer();
-            this.updateLoadingStep('server', 'completed');
-            this.logWithTimestamp('[GameVS] Server connected');
+            // CRITICAL FIX: Create WebSocket client BEFORE adding systems
+            // This ensures networkClient exists when systems register handlers
+            this.logWithTimestamp('[GameVS] Step 3: Creating WebSocket client');
+            const { WebSocketClient } = await import('./core/network/websocket_client.js');
+            this.networkClient = new WebSocketClient();
+            this.logWithTimestamp('[GameVS] WebSocket client created');
 
-            // Add VS-specific systems (NetworkSyncSystem needs networkClient)
+            // Add VS systems (handlers will be registered when systems are added)
             this.logWithTimestamp('[GameVS] Step 4: Adding VS systems');
             this.updateLoadingStep('systems', 'in_progress');
             await this.addVSSystems();
             this.updateLoadingStep('systems', 'completed');
             this.logWithTimestamp('[GameVS] VS systems added');
 
+            // Connect to WebSocket server AFTER systems are ready
+            this.logWithTimestamp('[GameVS] Step 5: Connecting to server');
+            this.updateLoadingStep('server', 'in_progress');
+            await this.connectToServer();
+            this.updateLoadingStep('server', 'completed');
+            this.logWithTimestamp('[GameVS] Server connected');
+
             // Wait for all players to be created
-            this.logWithTimestamp('[GameVS] Step 5: Waiting for players');
+            this.logWithTimestamp('[GameVS] Step 6: Waiting for players');
             this.updateLoadingStep('players', 'in_progress');
             await this.waitForPlayers();
             this.updateLoadingStep('players', 'completed');
@@ -273,14 +280,37 @@ export class GameVS extends Game {
             console.log('[GameVS] Health system disabled (server-authoritative)');
         }
 
-        // Disable camera following - configure static camera
+        // CRITICAL FIX: Completely remove Camera system in VS mode
+        // In VS, we want a static centered view of the entire arena
         const cameraSystem = Array.from(this.systems).find(
             s => s.constructor.name === 'Camera'
         );
         if (cameraSystem) {
-            // Disable camera following in VS mode (we want static view of arena)
-            cameraSystem.following = null;
-            console.log('[GameVS] Camera following disabled - static arena view');
+            // Remove camera system from update loop
+            this.systems.delete(cameraSystem);
+
+            // Reset game-world transform (no camera offset)
+            const gameWorld = document.querySelector('.game-world');
+            if (gameWorld) {
+                gameWorld.style.transform = 'none';
+                gameWorld.style.left = '0';
+                gameWorld.style.top = '0';
+                console.log('[GameVS] Game-world transform reset to static view');
+            }
+
+            console.log('[GameVS] Camera system completely removed - static arena view');
+        }
+
+        // Remove camera component from all entities (prevent camera following)
+        let cameraComponentsRemoved = 0;
+        for (const entity of this.entities) {
+            if (entity.getComponent('camera')) {
+                entity.removeComponent('camera');
+                cameraComponentsRemoved++;
+            }
+        }
+        if (cameraComponentsRemoved > 0) {
+            console.log(`[GameVS] Removed ${cameraComponentsRemoved} camera component(s) from entities`);
         }
 
         // Clear level state (not needed in VS)
@@ -292,18 +322,22 @@ export class GameVS extends Game {
 
     /**
      * Connect to WebSocket server (CRITICAL!)
+     * Note: networkClient is created in initializeVSMode() BEFORE this is called
+     * This ensures systems can register handlers during addVSSystems()
      */
     async connectToServer() {
         console.log('[GameVS] Connecting to WebSocket server...');
 
         try {
-            // Create WebSocket client
-            this.networkClient = new WebSocketClient();
+            // networkClient already created in initializeVSMode()
+            if (!this.networkClient) {
+                throw new Error('NetworkClient not initialized');
+            }
 
-            // Setup message handlers BEFORE connecting
+            // Setup GameVS-specific message handlers BEFORE connecting
             this.setupNetworkHandlers();
 
-            // Connect to server
+            // Connect to server (systems have already registered their handlers)
             await this.networkClient.connect(this.roomCode, this.playerName);
 
             console.log('[GameVS] Connected to server successfully');
@@ -461,25 +495,23 @@ export class GameVS extends Game {
         console.log('[GameVS] Creating local player:', playerData.playerName);
 
         try {
-            // Import player factory
-            const { createPlayer } = await import('./create/player_create.js');
+            // Import local player factory
+            const { createLocalPlayer } = await import('./create/remote_player_create.js');
 
             // Get spawn point
             const spawn = this.getSpawnPoint(playerIndex);
             console.log('[GameVS] Local player spawn:', spawn);
 
-            // Create player entity
-            const player = createPlayer(spawn.x, spawn.y);
-
-            // Add network player component using factory
-            player.addComponent('networkPlayer',
-                createNetworkPlayerComponent(
-                    playerData.playerId,
-                    playerData.playerName,
-                    true, // isLocal
-                    playerIndex
-                )
-            );
+            // Create local player entity (with input component)
+            const player = createLocalPlayer({
+                playerId: playerData.playerId,
+                playerName: playerData.playerName,
+                x: spawn.x,
+                y: spawn.y,
+                facingRight: true,
+                health: 100,
+                isAlive: true
+            }, playerIndex);
 
             // Add to game entities (so systems process it)
             this.addEntity(player);
@@ -504,32 +536,19 @@ export class GameVS extends Game {
             const spawn = this.getSpawnPoint(playerIndex);
             console.log('[GameVS] Remote player spawn:', spawn);
 
-            // Import player factory
-            const { createPlayer } = await import('./create/player_create.js');
+            // Import remote player factory
+            const { createRemotePlayer } = await import('./create/remote_player_create.js');
 
-            // Create player entity (without input component for remote players)
-            const player = createPlayer(spawn.x, spawn.y);
-
-            // Remove input component (remote players aren't controllable locally)
-            const inputComponent = player.getComponent('input');
-            if (inputComponent) {
-                // FIX: Use proper component deletion
-                if (player.removeComponent) {
-                    player.removeComponent('input');
-                } else {
-                    player.components.delete('input');
-                }
-            }
-
-            // Add network player component using factory
-            player.addComponent('networkPlayer',
-                createNetworkPlayerComponent(
-                    playerData.playerId,
-                    playerData.playerName,
-                    false, // isLocal = false for remote
-                    playerIndex
-                )
-            );
+            // Create remote player entity (WITHOUT input component)
+            const player = createRemotePlayer({
+                playerId: playerData.playerId,
+                playerName: playerData.playerName,
+                x: spawn.x,
+                y: spawn.y,
+                facingRight: true,
+                health: 100,
+                isAlive: true
+            }, playerIndex);
 
             // Add to game entities (so systems process it)
             this.addEntity(player);
@@ -545,20 +564,27 @@ export class GameVS extends Game {
 
     /**
      * Get spawn point for player index
+     * Map: pvp_arena_compact.json (24x14 tiles, 64px each = 1536x896)
+     * Spawn points positioned for visibility in static camera view
      */
     getSpawnPoint(playerIndex) {
-        // Default spawn points (corners of arena)
+        // Spawn points positioned in visible corners of arena
+        // Map dimensions: 1536x896 pixels
+        // Spawn points at 20% and 80% of dimensions for good spacing
         const defaultSpawns = [
-            { x: 100, y: 100 },    // Top-left
-            { x: 700, y: 100 },    // Top-right
-            { x: 100, y: 500 },    // Bottom-left
-            { x: 700, y: 500 }     // Bottom-right
+            { x: 300, y: 200 },    // Top-left (20% from edges)
+            { x: 1200, y: 200 },   // Top-right (80% horizontal)
+            { x: 300, y: 650 },    // Bottom-left (75% vertical)
+            { x: 1200, y: 650 }    // Bottom-right
         ];
 
         // TODO: Find spawn points from map entities (entities with 'spawn' component)
-        // For now, use default positions
+        // For now, use calculated positions based on map size
 
-        return defaultSpawns[playerIndex] || defaultSpawns[0];
+        const spawn = defaultSpawns[playerIndex] || defaultSpawns[0];
+        console.log(`[GameVS] Player ${playerIndex} spawn point: (${spawn.x}, ${spawn.y})`);
+
+        return spawn;
     }
 
     /**
