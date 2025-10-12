@@ -26,7 +26,10 @@ export class Movement extends System {
             visual.div.style.top = `${position.y}px`;
 
             // Mise à jour des inputs seulement si pas en knockback
-            entity.getComponent('input')?.update();
+            const inputComponent = entity.getComponent('input');
+            if (inputComponent && typeof inputComponent.update === 'function') {
+                inputComponent.update();
+            }
         });
     }
 }

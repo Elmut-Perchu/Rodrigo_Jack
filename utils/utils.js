@@ -432,24 +432,70 @@ export function createMainMenu(gameInstance, container) {
     startBtn.style.fontFamily = "'Press Start 2P', sans-serif";
     startBtn.onmouseover = () => startBtn.style.backgroundColor = '#45a049';
     startBtn.onmouseout = () => startBtn.style.backgroundColor = '#4CAF50';
+    // Attach a dynamic onclick handler that checks mode at click time
     startBtn.onclick = () => {
-        if (gameInstance.selectedMode === 'adventure') {
-            // Mode Adventure (comportement actuel)
-            menuContainer.style.display = 'none';
-            gameInstance.paused = false;
+        console.log('[MainMenu] Start clicked - selectedMode:', gameInstance.selectedMode);
 
-            // Musique map 1
-            setTimeout(() => {
-                const audioSystem = Array.from(gameInstance.systems).find(
-                    system => system.constructor.name === 'AudioSystem');
-                if (audioSystem) {
-                    console.log("Démarrage de la musique de map 1 via le bouton Start");
-                    audioSystem.startMapMusic(1);
-                }
-            }, 500);
-        } else if (gameInstance.selectedMode === 'vs') {
+        if (gameInstance.selectedMode === 'vs') {
             // Mode VS → Redirection vers lobby
+            console.log('[MainMenu] Redirecting to VS lobby...');
             window.location.href = 'views/vs_room_browser.html';
+        } else {
+            // Mode Adventure → Start game
+            console.log('[MainMenu] Adventure mode - checking if game is ready...');
+
+            // Check if game is fully initialized
+            if (gameInstance.cutsceneSystem && gameInstance.mapLoader) {
+                // Game is ready - start immediately
+                console.log('[MainMenu] Game ready - starting now...');
+                menuContainer.style.display = 'none';
+
+                if (gameInstance.skipIntro) {
+                    console.log('[MainMenu] Skipping intro - loading map1...');
+                    gameInstance.mapLoader.loadMap('./assets/maps/map1.json').then(() => {
+                        gameInstance.paused = false;
+                        const audioSystem = Array.from(gameInstance.systems).find(
+                            system => system.constructor.name === 'AudioSystem');
+                        if (audioSystem) {
+                            audioSystem.startMapMusic(1);
+                        }
+                    });
+                } else {
+                    console.log('[MainMenu] Playing intro cutscene...');
+                    gameInstance.cutsceneSystem.playCutscene('intro');
+                }
+            } else {
+                // Game not ready - wait for initialization
+                console.warn('[MainMenu] Game not ready - waiting for initialization...');
+                let checkCount = 0;
+                const waitForInit = setInterval(() => {
+                    checkCount++;
+                    if (gameInstance.cutsceneSystem && gameInstance.mapLoader) {
+                        clearInterval(waitForInit);
+                        console.log('[MainMenu] Game ready after', checkCount * 100, 'ms - starting...');
+                        menuContainer.style.display = 'none';
+
+                        if (gameInstance.skipIntro) {
+                            gameInstance.mapLoader.loadMap('./assets/maps/map1.json').then(() => {
+                                gameInstance.paused = false;
+                                const audioSystem = Array.from(gameInstance.systems).find(
+                                    system => system.constructor.name === 'AudioSystem');
+                                if (audioSystem) {
+                                    audioSystem.startMapMusic(1);
+                                }
+                            });
+                        } else {
+                            gameInstance.cutsceneSystem.playCutscene('intro');
+                        }
+                    }
+
+                    // Timeout after 5 seconds
+                    if (checkCount > 50) {
+                        clearInterval(waitForInit);
+                        console.error('[MainMenu] Timeout waiting for game initialization!');
+                    }
+                }, 100); // Check every 100ms
+            }
         }
     };
     menu.appendChild(startBtn);

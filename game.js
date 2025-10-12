@@ -127,8 +127,23 @@ export class Game {
 
         // Ajouter au menu juste avant le bouton démarrer
         const menu = this.mainMenu.querySelector('div'); // Obtenir le div du menu à l'intérieur du container
-        const startBtn = menu.querySelector('button'); // Le premier bouton est "Start Game"
-        menu.insertBefore(skipIntroCheckbox, startBtn);
+
+        // Trouver le bouton "Start Game" parmi les enfants directs de menu
+        let startBtn = null;
+        for (let child of menu.children) {
+            if (child.tagName === 'BUTTON' && child.textContent === 'Start Game') {
+                startBtn = child;
+                break;
+            }
+        }
+
+        if (startBtn) {
+            menu.insertBefore(skipIntroCheckbox, startBtn);
+        } else {
+            // Fallback: Ajouter à la fin du menu si startBtn n'est pas trouvé
+            console.warn('[Game] Start button not found, appending checkbox to menu');
+            menu.appendChild(skipIntroCheckbox);
+        }
     }
 
     async initAsync() {
@@ -210,15 +225,25 @@ export class Game {
 
     setupStartButton() {
         // Skip in VS mode (no mainMenu)
-        if (this.mode === 'vs' || !this.mainMenu) return;
+        if (this.mode === 'vs' || !this.mainMenu) {
+            console.log('[setupStartButton] Skipped - mode:', this.mode, 'mainMenu:', !!this.mainMenu);
+            return;
+        }
 
         // Trouver le bouton de démarrage dans le menu principal
-        const startBtn = this.mainMenu.querySelector('button');
+        // Utiliser le texte pour identifier le bon bouton (pas le premier)
+        const buttons = this.mainMenu.querySelectorAll('button');
+        console.log('[setupStartButton] Found buttons:', buttons.length);
+        const startBtn = Array.from(buttons).find(btn => btn.textContent === 'Start Game');
+        console.log('[setupStartButton] Found Start button:', !!startBtn);
         if (!startBtn) return;
+
+        console.log('[setupStartButton] Replacing onclick handler for Adventure mode');
 
         // Remplacer l'action onclick par notre nouvelle logique
         // qui ne demande PAS le nom du joueur
         startBtn.onclick = () => {
+            console.log('[Start Button] Adventure mode - starting game...');
             // Cacher le menu principal
             this.mainMenu.style.display = 'none';
 

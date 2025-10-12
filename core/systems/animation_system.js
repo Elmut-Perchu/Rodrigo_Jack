@@ -44,7 +44,7 @@ export class Animation extends System {
 
             if (!animation || !visual) return;
 
-            if (!animation.initialized && animation.spriteSheet.complete) {
+            if (!animation.initialized && animation.spriteSheet && animation.spriteSheet.complete) {
                 animation.initialized = true;
 
                 // Log pour arrows

@@ -15,7 +15,7 @@ export class Input extends System {
                 const input = entity.getComponent('input');
                 const velocity = entity.getComponent('velocity');
                 const property = entity.getComponent('property');
-                if (input && velocity && property.movable) {
+                if (input && input.vector && velocity && property && property.movable) {
                     velocity.vx = input.vector.h * property.speed;
                     if (input.vector.v > 0) {
                         input.vector.v = 0;

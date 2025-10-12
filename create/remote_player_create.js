@@ -255,7 +255,8 @@ export function createLocalPlayer(playerData, playerIndex = 0) {
     // Add input component for local control
     entity.addComponent('input', {
         keys: {},
-        mouse: { x: 0, y: 0, pressed: false }
+        mouse: { x: 0, y: 0, pressed: false },
+        vector: { h: 0, v: 0 }  // Required by input_system.js
     });
 
     // Disable interpolation for local player (uses client-side prediction)
