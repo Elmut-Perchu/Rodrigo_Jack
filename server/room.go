@@ -407,11 +407,22 @@ func (r *Room) startCountdown() {
 						})
 					}
 
-					// Mark game active
+					// Mark game active and start game loop
 					r.mu.Lock()
 					r.CountdownActive = false
 					r.IsGameActive = true
 					r.mu.Unlock()
+
+					// Broadcast match_start to signal game has begun
+					for _, p := range playersCopy {
+						p.sendMessage("match_start", map[string]interface{}{
+							"timestamp": time.Now().UnixMilli(),
+						})
+					}
+
+					// Start authoritative server game loop (20Hz tick rate)
+					go r.StartGameLoop()
+					log.Printf("[Room] Game loop started for room %s", r.Code)
 
 					return
 				}

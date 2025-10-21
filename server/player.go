@@ -129,6 +129,14 @@ func (p *Player) handleMessage(msg *Message) {
 		p.sendMessage("pong", map[string]interface{}{
 			"timestamp": msg.Data["timestamp"],
 		})
+	case "draw_line":
+		// Simple test: broadcast draw command to all other players in room
+		p.handleDrawLine(msg)
+	case "clear_canvas":
+		// Broadcast clear canvas to all players in room
+		if p.Room != nil {
+			p.Room.Broadcast("clear_canvas", map[string]interface{}{}, nil)
+		}
 	default:
 		log.Printf("[Player] Unknown message type: %s", msg.Type)
 	}
@@ -549,6 +557,16 @@ func (p *Player) Close() {
 }
 
 // generateUUID generates a cryptographically secure UUID
+// handleDrawLine broadcasts drawing data to all players in room (for testing)
+func (p *Player) handleDrawLine(msg *Message) {
+	if p.Room == nil {
+		return
+	}
+
+	// Forward the draw command to all other players
+	p.Room.Broadcast("draw_line", msg.Data, p)
+}
+
 func generateUUID() string {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)

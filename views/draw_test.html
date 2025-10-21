@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎨 WebSocket Draw Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #00d9ff;
+        }
+
+        .info {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info p {
+            margin: 5px 0;
+        }
+
+        .status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status.connected {
+            background: #00ff00;
+        }
+
+        .status.disconnected {
+            background: #ff0000;
+        }
+
+        .controls {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls input {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background: #0f3460;
+            color: white;
+            font-size: 14px;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background: #00d9ff;
+            color: #1a1a2e;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: #00b8d4;
+        }
+
+        .controls button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .color-picker {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .color-option:hover {
+            transform: scale(1.2);
+        }
+
+        .color-option.active {
+            border-color: white;
+        }
+
+        #canvas {
+            background: white;
+            border: 3px solid #00d9ff;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+            cursor: crosshair;
+        }
+
+        .log {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .log-entry {
+            margin: 3px 0;
+        }
+
+        .log-send { color: #00d9ff; }
+        .log-receive { color: #00ff88; }
+        .log-error { color: #ff4444; }
+        .log-info { color: #ffaa00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 WebSocket Test - Canvas Collaboratif</h1>
+
+        <div class="info">
+            <p><span class="status disconnected" id="status"></span> <strong>Statut:</strong> <span id="statusText">Déconnecté</span></p>
+            <p><strong>Room Code:</strong> <span id="roomCode">-</span></p>
+            <p><strong>Joueurs:</strong> <span id="playerCount">0</span></p>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="roomInput" placeholder="Room (ex: TEST)" maxlength="10" style="text-transform: uppercase;">
+            <input type="text" id="nameInput" placeholder="Nom" maxlength="12">
+            <button id="joinBtn">Rejoindre</button>
+            <button id="clearBtn" disabled>Effacer</button>
+
+            <div class="color-picker">
+                <span>Couleur:</span>
+                <div class="color-option active" data-color="#000000" style="background: #000000;"></div>
+                <div class="color-option" data-color="#ff0000" style="background: #ff0000;"></div>
+                <div class="color-option" data-color="#00ff00" style="background: #00ff00;"></div>
+                <div class="color-option" data-color="#0000ff" style="background: #0000ff;"></div>
+                <div class="color-option" data-color="#ffff00" style="background: #ffff00;"></div>
+            </div>
+        </div>
+
+        <canvas id="canvas" width="800" height="600"></canvas>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const WS_URL = 'ws://localhost:8080/ws';
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+
+        let ws = null;
+        let roomCode = null;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let currentColor = '#000000';
+
+        const statusEl = document.getElementById('status');
+        const statusTextEl = document.getElementById('statusText');
+        const roomCodeEl = document.getElementById('roomCode');
+        const playerCountEl = document.getElementById('playerCount');
+        const roomInput = document.getElementById('roomInput');
+        const nameInput = document.getElementById('nameInput');
+        const joinBtn = document.getElementById('joinBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const logEl = document.getElementById('log');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function send(type, data = {}) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ WebSocket fermé', 'error');
+                return;
+            }
+            const msg = { type, data, timestamp: Date.now() };
+            ws.send(JSON.stringify(msg));
+            log(`⬆️ ${type}`, 'send');
+        }
+
+        function connect() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                log('✅ Connecté', 'info');
+                statusEl.className = 'status connected';
+                statusTextEl.textContent = 'Connecté';
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                
+                switch (msg.type) {
+                    case 'lobby_joined':
+                        roomCode = msg.data.roomCode;
+                        roomCodeEl.textContent = roomCode;
+                        clearBtn.disabled = false;
+                        log(`✅ Room ${roomCode}`, 'info');
+                        break;
+
+                    case 'room_state':
+                        playerCountEl.textContent = msg.data.playerCount;
+                        break;
+
+                    case 'player_joined':
+                        playerCountEl.textContent = msg.data.playerCount;
+                        log(`👤 ${msg.data.playerName} rejoint`, 'info');
+                        break;
+
+                    case 'player_left':
+                        playerCountEl.textContent = msg.data.playerCount;
+                        break;
+
+                    case 'draw_line':
+                        // IMPORTANT: Dessiner les lignes des autres joueurs
+                        drawLine(msg.data.x1, msg.data.y1, msg.data.x2, msg.data.y2, msg.data.color, false);
+                        log(`⬇️ draw_line (${msg.data.x1},${msg.data.y1})`, 'receive');
+                        break;
+
+                    case 'clear_canvas':
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        log('🧹 Canvas effacé', 'info');
+                        break;
+                }
+            };
+
+            ws.onerror = (error) => {
+                log('❌ Erreur WS', 'error');
+                console.error(error);
+            };
+
+            ws.onclose = () => {
+                log('🔌 Déconnecté', 'info');
+                statusEl.className = 'status disconnected';
+                statusTextEl.textContent = 'Déconnecté';
+                ws = null;
+            };
+        }
+
+        function drawLine(x1, y1, x2, y2, color, broadcast = true) {
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            if (broadcast && ws && ws.readyState === WebSocket.OPEN) {
+                send('draw_line', {
+                    x1: Math.round(x1),
+                    y1: Math.round(y1),
+                    x2: Math.round(x2),
+                    y2: Math.round(y2),
+                    color: color
+                });
+            }
+        }
+
+        // Canvas events
+        canvas.addEventListener('mousedown', (e) => {
+            if (!roomCode) return;
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            lastX = e.clientX - rect.left;
+            lastY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing || !roomCode) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            drawLine(lastX, lastY, x, y, currentColor, true);
+            lastX = x;
+            lastY = y;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDrawing = false;
+        });
+
+        // Controls
+        joinBtn.addEventListener('click', () => {
+            const code = roomInput.value.trim().toUpperCase();
+            const name = nameInput.value.trim() || 'Player';
+            if (!code) {
+                alert('Entrez un code');
+                return;
+            }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket non connecté');
+                return;
+            }
+            send('lobby_join', { roomCode: code, playerName: name });
+        });
+
+        clearBtn.addEventListener('click', () => {
+            if (!roomCode) return;
+            send('clear_canvas', {});
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        // Color picker
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', () => {
+                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('active'));
+                option.classList.add('active');
+                currentColor = option.dataset.color;
+            });
+        });
+
+        // Auto-uppercase room code
+        roomInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+        // Auto-connect
+        connect();
+        log('🚀 Prêt - Entrez room code', 'info');
+    </script>
+</body>
+</html>

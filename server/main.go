@@ -15,6 +15,8 @@ var allowedOrigins = []string{
 	"http://localhost:3000",
 	"http://127.0.0.1:8000",
 	"http://127.0.0.1:3000",
+	"http://[::1]:8000",      // IPv6 localhost
+	"http://[::1]:3000",      // IPv6 localhost
 	// Add production domains here:
 	// "https://yourdomain.com",
 }

@@ -169,9 +169,10 @@ export class GameVS extends Game {
     async addVSSystems() {
         console.log('[GameVS] Adding VS-specific systems...');
 
-        // Import and add NetworkSyncSystem
+        // Import and add NetworkSyncSystem (save reference for later)
         const { NetworkSyncSystem } = await import('./core/systems_vs/network_sync_system.js');
-        this.addSystem(new NetworkSyncSystem(this));
+        this.networkSyncSystem = new NetworkSyncSystem(this);
+        this.addSystem(this.networkSyncSystem);
 
         // Import and add CombatSyncSystem
         const { CombatSyncSystem } = await import('./core/systems_vs/combat_sync_system.js');
@@ -188,7 +189,7 @@ export class GameVS extends Game {
         const { PowerUpSystem } = await import('./core/systems_vs/powerup_system.js');
         this.addSystem(new PowerUpSystem(this));
 
-        console.log('[GameVS] VS systems added');
+        console.log('[GameVS] VS systems added (handlers will be registered after WebSocket connection)');
     }
 
     /**
@@ -337,10 +338,18 @@ export class GameVS extends Game {
             // Setup GameVS-specific message handlers BEFORE connecting
             this.setupNetworkHandlers();
 
-            // Connect to server (systems have already registered their handlers)
+            // Connect to server
             await this.networkClient.connect(this.roomCode, this.playerName);
 
             console.log('[GameVS] Connected to server successfully');
+
+            // CRITICAL: Register NetworkSyncSystem handlers NOW (after networkClient exists and is connected)
+            if (this.networkSyncSystem) {
+                console.log('[GameVS] Registering NetworkSyncSystem handlers...');
+                this.networkSyncSystem.registerHandlers();
+            } else {
+                console.error('[GameVS] NetworkSyncSystem not found!');
+            }
 
         } catch (error) {
             console.error('[GameVS] Failed to connect to server:', error);
@@ -384,7 +393,7 @@ export class GameVS extends Game {
 
         // Player joined - create new player
         this.networkClient.on('player_joined', (data) => {
-            console.log('[GameVS] Player joined:', data);
+            console.log('👤 [GameVS] player_joined event received:', data);
             this.handlePlayerJoined(data);
         });
 

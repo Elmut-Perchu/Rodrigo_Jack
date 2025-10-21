@@ -44,13 +44,12 @@ export class NetworkSyncSystem extends System {
      * @param {Game} game - Game instance
      */
     setGame(game) {
+        console.log('🚀 [NetworkSyncSystem] setGame called!');
         super.setGame(game);
 
-        // Register handlers now that we have game reference
-        if (!this.handlersRegistered) {
-            this.registerHandlers();
-            this.handlersRegistered = true;
-        }
+        // DON'T register handlers here - they will be registered after WebSocket connection
+        // See game_vs.js connectToServer() which calls registerHandlers() explicitly
+        console.log('⏳ [NetworkSyncSystem] Waiting for WebSocket connection to register handlers...');
     }
 
     /**
@@ -58,7 +57,12 @@ export class NetworkSyncSystem extends System {
      * @private
      */
     registerHandlers() {
-        if (!this.game.networkClient) return;
+        if (!this.game.networkClient) {
+            console.warn('❌ [NetworkSyncSystem] registerHandlers called but networkClient does not exist yet!');
+            return;
+        }
+
+        console.log('✅ [NetworkSyncSystem] networkClient exists, registering handlers...');
 
         // Game state sync
         this.game.networkClient.on('game_state_sync', (data) => {
@@ -98,8 +102,12 @@ export class NetworkSyncSystem extends System {
 
         console.log('[NetworkSyncSystem] Message handlers registered');
 
+        // Mark as registered to prevent duplicate registration
+        this.handlersRegistered = true;
+
         // Mark handlers as ready to process queued messages
         this.game.networkClient.markHandlersReady();
+        console.log('✅ [NetworkSyncSystem] Handlers ready, queued messages will be processed');
     }
 
     /**
@@ -117,6 +125,12 @@ export class NetworkSyncSystem extends System {
     }
 
     update(deltaTime) {
+        // DEBUG: Log every 60 frames (1 second at 60fps)
+        this.debugFrameCount = (this.debugFrameCount || 0) + 1;
+        if (this.debugFrameCount % 60 === 0) {
+            console.log('[NetworkSync] Update called - mode:', this.game.mode, 'connected:', this.game.networkClient?.connected);
+        }
+
         if (!this.game.mode || this.game.mode !== 'vs') {
             console.warn('[NetworkSync] Skipping - mode:', this.game.mode);
             return;
@@ -218,7 +232,7 @@ export class NetworkSyncSystem extends System {
      * @param {Object} data - Game state data
      */
     handleGameStateSync(data) {
-        console.log('[NetworkSync] handleGameStateSync called with:', data);
+        console.log('🔥🔥🔥 [NetworkSync] handleGameStateSync CALLED! Players:', data?.players?.length);
 
         if (!data.players) {
             console.warn('[NetworkSync] No players in game_state_sync');
@@ -229,15 +243,14 @@ export class NetworkSyncSystem extends System {
 
         // Update all remote players
         for (const playerState of data.players) {
-            console.log('[NetworkSync] Processing player:', playerState.playerId, 'local:', this.game.localPlayerId);
+            const isLocal = playerState.playerId === this.game.localPlayerId;
+            console.log(`[NetworkSync] Player ${playerState.playerId.substring(0, 8)}: ${isLocal ? 'LOCAL (reconcile)' : 'REMOTE (buffer)'}`);
 
-            if (playerState.playerId === this.game.localPlayerId) {
+            if (isLocal) {
                 // Server reconciliation for local player
-                console.log('[NetworkSync] Reconciling local player');
                 this.reconcileLocalPlayer(playerState);
             } else {
                 // Buffer state for remote player interpolation
-                console.log('[NetworkSync] Buffering remote player state:', playerState.playerId);
                 this.bufferRemotePlayerState(playerState);
             }
         }
