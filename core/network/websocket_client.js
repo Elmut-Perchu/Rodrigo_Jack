@@ -255,6 +255,7 @@ export class WebSocketClient {
 
             const handlers = this.messageHandlers.get(message.type);
             if (handlers) {
+                console.log(`[WebSocketClient] Routing ${message.type} to ${handlers.size} handler(s)`);
                 handlers.forEach(handler => handler(message.data));
             } else {
                 console.warn(`[WebSocketClient] No handler for message type: ${message.type}`);

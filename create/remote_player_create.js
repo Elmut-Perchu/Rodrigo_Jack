@@ -8,6 +8,8 @@
 import { Entity } from '../core/entities/entity.js';
 import { CircleHitbox } from '../core/components/circle_hitbox_component.js';
 import { Visual } from '../core/components/visual_component.js';
+import { PlayerAnimation } from '../core/components/animation_component.js';
+import { Input } from '../core/components/input_component.js'; // NEW IMPORT for keyboard controls
 
 /**
  * Player color palette (P1=red, P2=blue, P3=green, P4=yellow)
@@ -18,6 +20,19 @@ const PLAYER_COLORS = [
     { primary: '#44FF44', secondary: '#00CC00', name: 'Green' },  // P3
     { primary: '#FFFF44', secondary: '#CCCC00', name: 'Yellow' }  // P4
 ];
+
+/**
+ * Map network animation names to PlayerAnimation state names
+ */
+const ANIMATION_MAP = {
+    'idle': 'idle',
+    'walk': 'run',      // Network uses 'walk', PlayerAnimation uses 'run'
+    'jump': 'jump',
+    'attack': 'attack1',
+    'shoot': 'arrowShoot',
+    'cast': 'magicAttack',
+    'death': 'death'
+};
 
 /**
  * Create remote player entity
@@ -53,59 +68,15 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
     const color = PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
     entity.addComponent('visual', new Visual(null, 110, 110));
 
-    // Sprite component with player color
-    entity.addComponent('sprite', {
-        src: 'assets/sprites/player_sheet.png',
-        width: 16,
-        height: 16,
-        facingRight: playerData.facingRight !== undefined ? playerData.facingRight : true,
-        colorFilter: color.primary, // Apply color tint
-        playerColor: color
-    });
+    // Animation component - FIXED: Use PlayerAnimation class
+    const animationComponent = new PlayerAnimation();
+    entity.addComponent('animation', animationComponent);
 
-    // Animation component
-    entity.addComponent('animation', {
-        currentAnimation: playerData.animation || 'idle',
-        frameIndex: 0,
-        frameTimer: 0,
-        animations: {
-            idle: {
-                frames: [0, 1, 2, 3],
-                frameRate: 8,
-                loop: true
-            },
-            walk: {
-                frames: [4, 5, 6, 7],
-                frameRate: 10,
-                loop: true
-            },
-            jump: {
-                frames: [8],
-                frameRate: 1,
-                loop: false
-            },
-            attack: {
-                frames: [12, 13, 14],
-                frameRate: 12,
-                loop: false
-            },
-            shoot: {
-                frames: [16, 17, 18],
-                frameRate: 10,
-                loop: false
-            },
-            cast: {
-                frames: [20, 21, 22],
-                frameRate: 8,
-                loop: false
-            },
-            death: {
-                frames: [24, 25, 26, 27],
-                frameRate: 6,
-                loop: false
-            }
-        }
-    });
+    // Set initial animation state
+    const networkAnim = playerData.animation || 'idle';
+    const mappedAnim = ANIMATION_MAP[networkAnim] || 'idle';
+    animationComponent.setState(mappedAnim);
+    animationComponent.isFlipped = playerData.facingRight === false;
 
     // Health component
     entity.addComponent('health', {
@@ -196,20 +167,18 @@ export function updateRemotePlayerState(entity, stateData) {
         velocity.vy = stateData.vy || 0;
     }
 
-    // Update animation
+    // Update animation - FIXED: Map network animation to PlayerAnimation state
     const animation = entity.getComponent('animation');
     if (animation && stateData.animation) {
-        if (animation.currentAnimation !== stateData.animation) {
-            animation.currentAnimation = stateData.animation;
-            animation.frameIndex = 0;
-            animation.frameTimer = 0;
+        const mappedAnim = ANIMATION_MAP[stateData.animation] || stateData.animation;
+        if (animation.currentState !== mappedAnim) {
+            animation.setState(mappedAnim);
         }
     }
 
     // Update facing direction
-    const sprite = entity.getComponent('sprite');
-    if (sprite && stateData.facingRight !== undefined) {
-        sprite.facingRight = stateData.facingRight;
+    if (animation && stateData.facingRight !== undefined) {
+        animation.isFlipped = !stateData.facingRight;
     }
 
     // Update health
@@ -252,12 +221,8 @@ export function createLocalPlayer(playerData, playerIndex = 0) {
         networkPlayer.isLocal = true;
     }
 
-    // Add input component for local control
-    entity.addComponent('input', {
-        keys: {},
-        mouse: { x: 0, y: 0, pressed: false },
-        vector: { h: 0, v: 0 }  // Required by input_system.js
-    });
+    // Add input component for local control - MUST use Input class for keyboard event listeners
+    entity.addComponent('input', new Input());
 
     // Disable interpolation for local player (uses client-side prediction)
     const interpolation = entity.getComponent('interpolation');

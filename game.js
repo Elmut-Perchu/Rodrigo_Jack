@@ -224,54 +224,11 @@ export class Game {
     }
 
     setupStartButton() {
-        // Skip in VS mode (no mainMenu)
-        if (this.mode === 'vs' || !this.mainMenu) {
-            console.log('[setupStartButton] Skipped - mode:', this.mode, 'mainMenu:', !!this.mainMenu);
-            return;
-        }
-
-        // Trouver le bouton de démarrage dans le menu principal
-        // Utiliser le texte pour identifier le bon bouton (pas le premier)
-        const buttons = this.mainMenu.querySelectorAll('button');
-        console.log('[setupStartButton] Found buttons:', buttons.length);
-        const startBtn = Array.from(buttons).find(btn => btn.textContent === 'Start Game');
-        console.log('[setupStartButton] Found Start button:', !!startBtn);
-        if (!startBtn) return;
-
-        console.log('[setupStartButton] Replacing onclick handler for Adventure mode');
-
-        // Remplacer l'action onclick par notre nouvelle logique
-        // qui ne demande PAS le nom du joueur
-        startBtn.onclick = () => {
-            console.log('[Start Button] Adventure mode - starting game...');
-            // Cacher le menu principal
-            this.mainMenu.style.display = 'none';
-
-            // Démarrer directement le jeu ou la cinématique d'intro
-            if (this.skipIntro) {
-                // Sauter directement à la map1 si on choisit de sauter l'intro
-                this.mapLoader.loadMap('./assets/maps/map1.json').then(() => {
-                    this.paused = false;
-
-                    // Jouer la musique de la map 1
-                    const audioSystem = Array.from(this.systems).find(
-                        system => system.constructor.name === 'AudioSystem');
-                    if (audioSystem) {
-                        audioSystem.startMapMusic(1);
-                    }
-                });
-            } else {
-                // Sinon, lancer la cinématique d'introduction
-                if (this.cutsceneSystem) {
-                    this.cutsceneSystem.playCutscene('intro');
-                } else {
-                    // Fallback si le système de cinématique n'est pas disponible
-                    this.mapLoader.loadMap('./assets/maps/map1.json').then(() => {
-                        this.paused = false;
-                    });
-                }
-            }
-        };
+        // DEPRECATED: This function is no longer needed.
+        // The Start button onclick handler is now managed entirely by utils.js
+        // which correctly handles both Adventure and VS modes based on selectedMode.
+        console.log('[setupStartButton] Skipped - handler managed by utils.js');
+        return;
     }
 
     // Ajoutons une méthode pour demander le nom du joueur
@@ -594,6 +551,10 @@ export class Game {
             // Vérifier si une cinématique est en cours
             if (this.cutsceneSystem && this.cutsceneSystem.isPlaying) {
                 this.cutsceneSystem.update(deltaTime);
+            }
+            // DEBUG: Log en mode VS pour comprendre pourquoi en pause
+            if (this.mode === 'vs') {
+                console.warn('[Game] PAUSED in VS mode - systems not updating!');
             }
             return;
         }

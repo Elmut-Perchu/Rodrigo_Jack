@@ -362,10 +362,9 @@ func (p *Player) handlePlayerState(msg *Message) {
 		p.FacingRight = facingRight
 	}
 
-	// Broadcast state to all players in room (including sender for reconciliation)
-	p.Room.Broadcast("game_state_sync", map[string]interface{}{
-		"players": p.Room.GetAllPlayerStates(),
-	}, nil)
+	// NOTE: State broadcasting is handled by game loop (game_loop.go:82)
+	// This ensures single source of truth and consistent 20Hz tick rate
+	// Removed duplicate broadcast here to avoid message conflicts
 }
 
 // handlePlayerAttack handles player attack actions

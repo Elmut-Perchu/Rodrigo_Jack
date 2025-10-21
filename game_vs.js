@@ -519,6 +519,13 @@ export class GameVS extends Game {
 
             console.log('[GameVS] Local player created successfully');
 
+            // CRITICAL: Send player_ready to server so match can start
+            this.networkClient.send('player_ready', {
+                playerId: this.localPlayerId,
+                ready: true
+            });
+            console.log('[GameVS] Sent player_ready to server');
+
         } catch (error) {
             console.error('[GameVS] Failed to create local player:', error);
             throw error;

@@ -117,8 +117,14 @@ export class NetworkSyncSystem extends System {
     }
 
     update(deltaTime) {
-        if (!this.game.mode || this.game.mode !== 'vs') return;
-        if (!this.game.networkClient || !this.game.networkClient.connected) return;
+        if (!this.game.mode || this.game.mode !== 'vs') {
+            console.warn('[NetworkSync] Skipping - mode:', this.game.mode);
+            return;
+        }
+        if (!this.game.networkClient || !this.game.networkClient.connected) {
+            console.warn('[NetworkSync] Skipping - client:', !!this.game.networkClient, 'connected:', this.game.networkClient?.connected);
+            return;
+        }
 
         this.lastUpdate += deltaTime;
 
@@ -148,14 +154,34 @@ export class NetworkSyncSystem extends System {
      */
     sendLocalPlayerState() {
         const localPlayer = this.getLocalPlayer();
-        if (!localPlayer) return;
+        if (!localPlayer) {
+            console.warn('[NetworkSync] No local player found - cannot send state');
+            return;
+        }
 
         const position = localPlayer.getComponent('position');
         const velocity = localPlayer.getComponent('velocity');
         const animation = localPlayer.getComponent('animation');
-        const sprite = localPlayer.getComponent('sprite');
 
-        if (!position || !velocity) return;
+        if (!position || !velocity) {
+            console.warn('[NetworkSync] Missing position or velocity component');
+            return;
+        }
+
+        // Map PlayerAnimation state back to network animation names
+        let networkAnimation = 'idle';
+        if (animation && animation.currentState) {
+            const stateToNetworkMap = {
+                'idle': 'idle',
+                'run': 'walk',
+                'jump': 'jump',
+                'attack1': 'attack',
+                'arrowShoot': 'shoot',
+                'magicAttack': 'cast',
+                'death': 'death'
+            };
+            networkAnimation = stateToNetworkMap[animation.currentState] || 'idle';
+        }
 
         const state = {
             playerId: this.game.localPlayerId,
@@ -163,11 +189,12 @@ export class NetworkSyncSystem extends System {
             y: Math.round(position.y * 100) / 100,
             vx: Math.round(velocity.vx * 100) / 100,
             vy: Math.round(velocity.vy * 100) / 100,
-            animation: animation ? animation.currentAnimation : 'idle',
-            facingRight: sprite ? sprite.facingRight : true,
+            animation: networkAnimation,
+            facingRight: animation ? !animation.isFlipped : true,
             timestamp: Date.now()
         };
 
+        console.log('[NetworkSync] Sending player_state:', state);
         this.game.networkClient.send('player_state', state);
     }
 
@@ -191,15 +218,26 @@ export class NetworkSyncSystem extends System {
      * @param {Object} data - Game state data
      */
     handleGameStateSync(data) {
-        if (!data.players) return;
+        console.log('[NetworkSync] handleGameStateSync called with:', data);
+
+        if (!data.players) {
+            console.warn('[NetworkSync] No players in game_state_sync');
+            return;
+        }
+
+        console.log('[NetworkSync] Processing', data.players.length, 'player states');
 
         // Update all remote players
         for (const playerState of data.players) {
+            console.log('[NetworkSync] Processing player:', playerState.playerId, 'local:', this.game.localPlayerId);
+
             if (playerState.playerId === this.game.localPlayerId) {
                 // Server reconciliation for local player
+                console.log('[NetworkSync] Reconciling local player');
                 this.reconcileLocalPlayer(playerState);
             } else {
                 // Buffer state for remote player interpolation
+                console.log('[NetworkSync] Buffering remote player state:', playerState.playerId);
                 this.bufferRemotePlayerState(playerState);
             }
         }
@@ -239,7 +277,10 @@ export class NetworkSyncSystem extends System {
      * @param {Object} state - Remote player state
      */
     bufferRemotePlayerState(state) {
+        console.log('[NetworkSync] bufferRemotePlayerState for:', state.playerId, 'pos:', state.x, state.y);
+
         if (!this.stateBuffer.has(state.playerId)) {
+            console.log('[NetworkSync] Creating new buffer for player:', state.playerId);
             this.stateBuffer.set(state.playerId, []);
         }
 
@@ -248,6 +289,8 @@ export class NetworkSyncSystem extends System {
             ...state,
             receivedAt: Date.now()
         });
+
+        console.log('[NetworkSync] Buffer size for', state.playerId, ':', buffer.length);
 
         // Keep buffer size limited (last 10 states)
         if (buffer.length > 10) {
@@ -261,15 +304,28 @@ export class NetworkSyncSystem extends System {
      * @param {number} deltaTime - Time since last frame
      */
     updateRemotePlayers(deltaTime) {
+        let remotePlayerCount = 0;
+        let interpolatedCount = 0;
+
         for (const entity of this.game.entities) {
             const networkPlayer = entity.getComponent('networkPlayer');
             if (!networkPlayer || networkPlayer.isLocal) continue;
 
+            remotePlayerCount++;
+
             const buffer = this.stateBuffer.get(networkPlayer.playerId);
-            if (!buffer || buffer.length < 2) continue;
+            if (!buffer || buffer.length < 2) {
+                console.warn('[NetworkSync] Remote player', networkPlayer.playerId, 'has insufficient buffer:', buffer?.length || 0);
+                continue;
+            }
 
             // Interpolate between buffered states
             this.interpolateRemotePlayer(entity, buffer);
+            interpolatedCount++;
+        }
+
+        if (remotePlayerCount > 0) {
+            console.log('[NetworkSync] updateRemotePlayers:', interpolatedCount, '/', remotePlayerCount, 'players interpolated');
         }
     }
 
@@ -280,6 +336,7 @@ export class NetworkSyncSystem extends System {
      * @param {Array} buffer - State buffer
      */
     interpolateRemotePlayer(entity, buffer) {
+        const networkPlayer = entity.getComponent('networkPlayer');
         const now = Date.now();
         const renderTime = now - this.interpolationDelay;
 
@@ -301,7 +358,10 @@ export class NetworkSyncSystem extends System {
             state2 = buffer[buffer.length - 1];
         }
 
-        if (!state1 || !state2) return;
+        if (!state1 || !state2) {
+            console.warn('[NetworkSync] No valid states to interpolate for', networkPlayer.playerId);
+            return;
+        }
 
         // Calculate interpolation factor
         const timeDiff = state2.timestamp - state1.timestamp;
@@ -311,22 +371,27 @@ export class NetworkSyncSystem extends System {
         // Interpolate position
         const position = entity.getComponent('position');
         if (position) {
+            const oldX = position.x;
+            const oldY = position.y;
             position.x = state1.x + (state2.x - state1.x) * factor;
             position.y = state1.y + (state2.y - state1.y) * factor;
+
+            console.log('[NetworkSync] Interpolated', networkPlayer.playerId, 'from', oldX.toFixed(1), oldY.toFixed(1), 'to', position.x.toFixed(1), position.y.toFixed(1));
         }
 
         // Update animation and facing direction
         const animation = entity.getComponent('animation');
-        const sprite = entity.getComponent('sprite');
 
         if (animation && state2.animation) {
-            if (animation.currentAnimation !== state2.animation) {
-                animation.currentAnimation = state2.animation;
+            // PlayerAnimation uses currentState property, not currentAnimation
+            if (animation.currentState !== state2.animation) {
+                animation.setState(state2.animation);
             }
-        }
 
-        if (sprite && state2.facingRight !== undefined) {
-            sprite.facingRight = state2.facingRight;
+            // PlayerAnimation uses isFlipped property for facing direction
+            if (state2.facingRight !== undefined) {
+                animation.isFlipped = !state2.facingRight;
+            }
         }
     }
 
