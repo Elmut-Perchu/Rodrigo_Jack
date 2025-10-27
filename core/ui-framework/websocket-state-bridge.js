@@ -138,14 +138,26 @@ export function createWebSocketBridge(frameworkState) {
 
     // Match start - NOW navigate to game (server is ready with IsGameActive = true)
     wsClient.on('match_start', (data) => {
-      console.log('[WebSocketBridge] Match started! Navigating to game...');
+      console.log('[WebSocketBridge] Match started! Preparing to navigate...');
 
       // Store player info for game
       sessionStorage.setItem('vsPlayerName', frameworkState.currentPlayerName);
       sessionStorage.setItem('vsPlayerId', frameworkState.currentPlayerId);
+      sessionStorage.setItem('vsRoomCode', frameworkState.roomCode);
 
-      // Redirect to game immediately (server is ready now)
-      window.location.href = `vs_game.html?room=${frameworkState.roomCode}`;
+      // CRITICAL FIX: Send game_ready BEFORE navigating!
+      // This tells server we're about to load game client
+      // Server will wait for us to reconnect
+      console.log('📨 [WebSocketBridge] Sending game_ready before navigation...');
+      wsClient.send('game_ready', {
+        playerId: frameworkState.currentPlayerId
+      });
+
+      // Small delay to ensure message is sent before disconnecting
+      setTimeout(() => {
+        console.log('[WebSocketBridge] Navigating to game...');
+        window.location.href = `vs_game.html?room=${frameworkState.roomCode}`;
+      }, 100); // 100ms delay
     });
 
     // Error handling

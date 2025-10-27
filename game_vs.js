@@ -461,13 +461,10 @@ export class GameVS extends Game {
         this.playersReady = true;
         console.log(`[GameVS] All players created (${data.players.length})`);
 
-        // CRITICAL: Tell server we're ready for game loop to start
-        // Send game_ready ONLY AFTER all players are created and positioned
-        console.log('📨 [GameVS] Sending game_ready to server...');
-        this.networkClient.send('game_ready', {
-            playerId: this.localPlayerId
-        });
-        console.log('✅ [GameVS] game_ready sent!');
+        // NOTE: game_ready is now sent from lobby BEFORE navigation
+        // This prevents race condition where players disconnect before server gets game_ready
+        // If we're here, server already received game_ready and started game loop
+        console.log('✅ [GameVS] Players ready (game_ready already sent from lobby)');
     }
 
     /**

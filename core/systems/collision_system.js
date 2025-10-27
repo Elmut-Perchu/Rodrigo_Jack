@@ -24,6 +24,14 @@ export class Collision extends System {
 
             if (!position || !visual || !velocity) continue;
 
+            // CRITICAL FIX: Skip remote players in VS mode
+            // Remote players are controlled by NetworkSyncSystem interpolation
+            // Collision resolution would interfere with smooth interpolation
+            const networkPlayer = entity.getComponent('networkPlayer');
+            if (networkPlayer && !networkPlayer.isLocal) {
+                continue; // Remote player - no local collision resolution
+            }
+
             // Traiter différemment les entités avec et sans hitbox circulaire
             if (hitbox) {
                 this.handleCircleCollisions(entity, entities);

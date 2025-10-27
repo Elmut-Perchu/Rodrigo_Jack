@@ -11,6 +11,14 @@ export class Movement extends System {
 
             if (!position || !velocity || !visual) return;
 
+            // CRITICAL FIX: Skip remote players in VS mode
+            // Remote players are controlled by NetworkSyncSystem interpolation
+            // Only local player should be updated by MovementSystem
+            const networkPlayer = entity.getComponent('networkPlayer');
+            if (networkPlayer && !networkPlayer.isLocal) {
+                return; // Remote player - controlled by NetworkSyncSystem
+            }
+
             // Mettre à jour la position même pendant le knockback
             position.x += velocity.vx * deltaTime;
             position.y -= velocity.vy * deltaTime;

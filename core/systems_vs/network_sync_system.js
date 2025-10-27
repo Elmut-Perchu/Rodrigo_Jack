@@ -348,33 +348,21 @@ export class NetworkSyncSystem extends System {
      * @param {number} deltaTime - Time since last frame
      */
     updateRemotePlayers(deltaTime) {
-        let remotePlayerCount = 0;
-        let interpolatedCount = 0;
-
         for (const entity of this.game.entities) {
             const networkPlayer = entity.getComponent('networkPlayer');
             if (!networkPlayer || networkPlayer.isLocal) continue;
-
-            remotePlayerCount++;
 
             const buffer = this.stateBuffer.get(networkPlayer.playerId);
 
             // CRITICAL FIX: With alpha-based interpolation, we don't need 2 states!
             // The interpolation runs continuously between previousX/Y and targetX/Y
             // We only need buffer states when alpha reaches 1.0 to advance to next target
-            // Requiring buffer.length >= 2 causes stuttering because buffer gets consumed
             if (!buffer) {
-                console.warn('[NetworkSync] Remote player', networkPlayer.playerId, 'has no buffer');
                 continue;
             }
 
             // Interpolate (will continue smoothly even with empty buffer until new states arrive)
             this.interpolateRemotePlayer(entity, buffer);
-            interpolatedCount++;
-        }
-
-        if (remotePlayerCount > 0 && Math.random() < 0.05) {
-            console.log('[NetworkSync] updateRemotePlayers:', interpolatedCount, '/', remotePlayerCount, 'players interpolated');
         }
     }
 
@@ -447,12 +435,17 @@ export class NetworkSyncSystem extends System {
         const easedAlpha = this.easeOutCubic(interpolation.alpha);
 
         // Interpolate position
+        const oldX = position.x;
+        const oldY = position.y;
         position.x = interpolation.previousX + (interpolation.targetX - interpolation.previousX) * easedAlpha;
         position.y = interpolation.previousY + (interpolation.targetY - interpolation.previousY) * easedAlpha;
 
-        // Debug log every 10 frames to reduce spam
-        if (Math.random() < 0.1) {
-            console.log(`[NetworkSync] ${networkPlayer.playerId.substring(0,8)}: α=${interpolation.alpha.toFixed(2)} pos=(${position.x.toFixed(1)}, ${position.y.toFixed(1)}) target=(${interpolation.targetX.toFixed(1)}, ${interpolation.targetY.toFixed(1)})`);
+        // 🔥 DEBUG: Log EVERY interpolation to see if it's working
+        console.log(`🎯 [INTERPOLATION] ${networkPlayer.playerId.substring(0,8)}: α=${interpolation.alpha.toFixed(2)} | prev=(${interpolation.previousX.toFixed(1)},${interpolation.previousY.toFixed(1)}) → target=(${interpolation.targetX.toFixed(1)},${interpolation.targetY.toFixed(1)}) | OLD=(${oldX.toFixed(1)},${oldY.toFixed(1)}) → NEW=(${position.x.toFixed(1)},${position.y.toFixed(1)})`);
+
+        // Verify position actually changed
+        if (oldX === position.x && oldY === position.y) {
+            console.warn(`⚠️ [INTERPOLATION] Position NOT CHANGED! prev=target=${interpolation.previousX.toFixed(1)},${interpolation.previousY.toFixed(1)}`);
         }
     }
 
