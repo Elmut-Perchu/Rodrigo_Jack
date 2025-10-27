@@ -277,11 +277,16 @@ export class NetworkSyncSystem extends System {
 
     /**
      * Server reconciliation for local player
-     * Snap position if error exceeds threshold
+     * DISABLED: Client has full authority over local player movement
+     * Only log errors for debugging, don't snap position
      * @private
      * @param {Object} serverState - Server's view of local player
      */
     reconcileLocalPlayer(serverState) {
+        // CRITICAL FIX: Do NOT reconcile local player position!
+        // This causes the "tug of war" effect where server constantly snaps player back
+        // In a fast-paced platformer, client must have full control of local movement
+
         if (!this.predictionEnabled) return;
 
         const localPlayer = this.getLocalPlayer();
@@ -290,17 +295,19 @@ export class NetworkSyncSystem extends System {
         const position = localPlayer.getComponent('position');
         if (!position) return;
 
-        // Calculate position error
+        // Calculate position error (for debugging only)
         const dx = serverState.x - position.x;
         const dy = serverState.y - position.y;
         const error = Math.sqrt(dx * dx + dy * dy);
 
-        // Snap if error exceeds threshold
-        if (error > this.reconciliationThreshold) {
-            console.log(`[NetworkSyncSystem] Reconciliation snap: error=${error.toFixed(2)}px`);
-            position.x = serverState.x;
-            position.y = serverState.y;
+        // Log large errors for debugging (but don't snap!)
+        if (error > 100) {
+            console.warn(`[NetworkSync] Large position error: ${error.toFixed(2)}px (client vs server)`);
         }
+
+        // ❌ DO NOT SNAP LOCAL PLAYER POSITION
+        // The client has full authority over its own player
+        // Only remote players are interpolated from server state
     }
 
     /**

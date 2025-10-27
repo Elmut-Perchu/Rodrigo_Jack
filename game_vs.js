@@ -418,6 +418,12 @@ export class GameVS extends Game {
             this.handleMatchStart(data);
         });
 
+        // Match countdown - display countdown before match starts
+        this.networkClient.on('match_countdown', (data) => {
+            console.log('[GameVS] Match countdown:', data.message);
+            this.displayCountdown(data.message);
+        });
+
         console.log('[GameVS] Network handlers registered');
     }
 
@@ -804,6 +810,65 @@ export class GameVS extends Game {
     }
 
     /**
+     * Display countdown overlay
+     * Shows large countdown text in center of screen
+     */
+    displayCountdown(message) {
+        // Create or get countdown overlay
+        let overlay = document.getElementById('countdown-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'countdown-overlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 9999;
+                font-family: 'Press Start 2P', monospace, Arial, sans-serif;
+                color: white;
+                font-size: 120px;
+                text-shadow: 0 0 20px #ff0, 0 0 40px #ff0, 0 0 60px #ff0;
+                animation: pulse 0.5s ease-in-out;
+                pointer-events: none;
+            `;
+            document.body.appendChild(overlay);
+
+            // Add pulse animation
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes pulse {
+                    0%, 100% { transform: scale(1); opacity: 1; }
+                    50% { transform: scale(1.2); opacity: 0.8; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Update text
+        overlay.textContent = message;
+        overlay.style.display = 'flex';
+
+        // Reset animation
+        overlay.style.animation = 'none';
+        setTimeout(() => {
+            overlay.style.animation = 'pulse 0.5s ease-in-out';
+        }, 10);
+
+        // Remove "GO!" after delay
+        if (message === 'GO!') {
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 1000);
+        }
+    }
+
+    /**
      * Cleanup VS mode resources
      */
     cleanup() {
@@ -816,6 +881,12 @@ export class GameVS extends Game {
 
         // Clear players
         this.players.clear();
+
+        // Remove countdown overlay
+        const overlay = document.getElementById('countdown-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
 
         // Call base cleanup if it exists
         if (super.cleanup) {

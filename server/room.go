@@ -571,20 +571,21 @@ func (r *Room) checkGameReady() {
 
 	// If ALL players are game-ready, start the game loop!
 	if readyCount == len(r.Players) && len(r.Players) >= 2 {
-		log.Printf("[CHECK_GAME_READY] ✅ ALL PLAYERS READY! Starting game loop...")
+		log.Printf("[CHECK_GAME_READY] ✅ ALL PLAYERS READY! Starting countdown...")
 
-		// CRITICAL: Initialize player spawn positions BEFORE starting game loop!
+		// CRITICAL: Initialize player spawn positions BEFORE countdown!
 		// Otherwise all players will be at (0, 0)
 		r.initializePlayerSpawnPositions()
 
-		// CRITICAL: Set IsGameActive = true BEFORE starting game loop!
+		// CRITICAL: Set IsGameActive = true BEFORE countdown!
 		// Otherwise game loop will immediately stop when it checks IsGameActive
 		r.IsGameActive = true
 		log.Printf("[CHECK_GAME_READY] Set IsGameActive = true")
 
-		// Start authoritative server game loop (20Hz tick rate)
-		go r.StartGameLoop()
-		log.Printf("[CHECK_GAME_READY] Game loop started for room %s", r.Code)
+		// Start 3-second countdown before game loop
+		// This gives all clients time to stabilize connections
+		go r.startMatchCountdown()
+		log.Printf("[CHECK_GAME_READY] Match countdown started for room %s", r.Code)
 	} else {
 		log.Printf("[CHECK_GAME_READY] Waiting for more players to be ready...")
 	}
@@ -629,4 +630,61 @@ func (r *Room) initializePlayerSpawnPositions() {
 	}
 
 	log.Printf("[SPAWN_INIT] ========== END ==========")
+}
+
+// startMatchCountdown performs 3-second countdown before starting game loop
+// Gives all clients time to stabilize connections and prepare for match
+func (r *Room) startMatchCountdown() {
+	log.Printf("[COUNTDOWN] ========== START ==========")
+	log.Printf("[COUNTDOWN] Starting 3-second countdown for room %s", r.Code)
+
+	// Lock is not held during countdown to allow other operations
+	// We broadcast countdown messages to all players
+
+	// 3
+	r.mu.Lock()
+	r.broadcastLocked("match_countdown", map[string]interface{}{
+		"count":   3,
+		"message": "3",
+	}, nil)
+	r.mu.Unlock()
+	log.Printf("[COUNTDOWN] 3...")
+	time.Sleep(1 * time.Second)
+
+	// 2
+	r.mu.Lock()
+	r.broadcastLocked("match_countdown", map[string]interface{}{
+		"count":   2,
+		"message": "2",
+	}, nil)
+	r.mu.Unlock()
+	log.Printf("[COUNTDOWN] 2...")
+	time.Sleep(1 * time.Second)
+
+	// 1
+	r.mu.Lock()
+	r.broadcastLocked("match_countdown", map[string]interface{}{
+		"count":   1,
+		"message": "1",
+	}, nil)
+	r.mu.Unlock()
+	log.Printf("[COUNTDOWN] 1...")
+	time.Sleep(1 * time.Second)
+
+	// GO!
+	r.mu.Lock()
+	r.broadcastLocked("match_countdown", map[string]interface{}{
+		"count":   0,
+		"message": "GO!",
+	}, nil)
+	r.mu.Unlock()
+	log.Printf("[COUNTDOWN] GO!")
+
+	// Small delay to let "GO!" message reach clients
+	time.Sleep(200 * time.Millisecond)
+
+	// Start the authoritative game loop (20Hz tick rate)
+	go r.StartGameLoop()
+	log.Printf("[COUNTDOWN] Game loop started for room %s", r.Code)
+	log.Printf("[COUNTDOWN] ========== END ==========")
 }
