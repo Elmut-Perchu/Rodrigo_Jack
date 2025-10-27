@@ -130,18 +130,22 @@ export function createWebSocketBridge(frameworkState) {
       frameworkState.timerText = 'Waiting for all players to be ready...';
     });
 
-    // Game starting
+    // Game starting - just update UI, don't navigate yet
     wsClient.on('game_starting', (data) => {
       frameworkState.timerText = 'Starting game...';
+      console.log('[WebSocketBridge] Game starting, waiting for match_start...');
+    });
+
+    // Match start - NOW navigate to game (server is ready with IsGameActive = true)
+    wsClient.on('match_start', (data) => {
+      console.log('[WebSocketBridge] Match started! Navigating to game...');
 
       // Store player info for game
       sessionStorage.setItem('vsPlayerName', frameworkState.currentPlayerName);
       sessionStorage.setItem('vsPlayerId', frameworkState.currentPlayerId);
 
-      // Redirect to game after 2 seconds
-      setTimeout(() => {
-        window.location.href = `vs_game.html?room=${frameworkState.roomCode}`;
-      }, 2000);
+      // Redirect to game immediately (server is ready now)
+      window.location.href = `vs_game.html?room=${frameworkState.roomCode}`;
     });
 
     // Error handling

@@ -12,7 +12,7 @@ export class NetworkSyncSystem extends System {
         super(game);
 
         this.updateRate = 60; // 60fps sync
-        this.updateInterval = 1000 / this.updateRate;
+        this.updateInterval = 1 / this.updateRate; // CRITICAL FIX: Keep in SECONDS (0.01666s) to match deltaTime units!
         this.lastUpdate = 0;
 
         // Client-side prediction
@@ -25,13 +25,13 @@ export class NetworkSyncSystem extends System {
 
         // Network stats
         this.lastPingTime = 0;
-        this.pingInterval = 1000; // Ping every second
+        this.pingInterval = 1; // FIXED: Ping every 1 SECOND (not 1000 ms, we use seconds)
         this.latency = 0;
 
         // Buffer cleanup
         this.lastBufferCleanup = 0;
-        this.bufferCleanupInterval = 5000; // Cleanup every 5 seconds
-        this.staleBufferThreshold = 30000; // 30 seconds without updates = stale
+        this.bufferCleanupInterval = 5; // FIXED: Cleanup every 5 SECONDS (not 5000 ms)
+        this.staleBufferThreshold = 30; // FIXED: 30 SECONDS without updates = stale (not 30000 ms)
 
         // Handlers will be registered in setGame() after game reference is set
         this.handlersRegistered = false;
@@ -57,45 +57,54 @@ export class NetworkSyncSystem extends System {
      * @private
      */
     registerHandlers() {
-        if (!this.game.networkClient) {
-            console.warn('❌ [NetworkSyncSystem] registerHandlers called but networkClient does not exist yet!');
+        console.log('🔍 [NetworkSyncSystem] registerHandlers() called');
+        console.log('🔍 [NetworkSyncSystem] this.game:', !!this.game);
+        console.log('🔍 [NetworkSyncSystem] this.game.networkClient:', !!this.game?.networkClient);
+
+        // CRITICAL FIX: Check if game is GameVS instance with networkClient property
+        const networkClient = this.game?.networkClient;
+
+        if (!this.game || !networkClient) {
+            console.error('❌ [NetworkSyncSystem] Cannot register handlers - networkClient does not exist!');
+            console.error('❌ [NetworkSyncSystem] this.game exists?', !!this.game);
+            console.error('❌ [NetworkSyncSystem] networkClient exists?', !!networkClient);
             return;
         }
 
         console.log('✅ [NetworkSyncSystem] networkClient exists, registering handlers...');
 
         // Game state sync
-        this.game.networkClient.on('game_state_sync', (data) => {
+        networkClient.on('game_state_sync', (data) => {
             this.handleGameStateSync(data);
         });
 
         // Pong for latency measurement
-        this.game.networkClient.on('pong', (data) => {
+        networkClient.on('pong', (data) => {
             this.handlePong(data);
         });
 
         // Combat events (delegated to CombatSyncSystem)
-        this.game.networkClient.on('player_attack', (data) => {
+        networkClient.on('player_attack', (data) => {
             const combatSystem = this.getCombatSystem();
             if (combatSystem) combatSystem.handlePlayerAttack(data);
         });
 
-        this.game.networkClient.on('player_hit', (data) => {
+        networkClient.on('player_hit', (data) => {
             const combatSystem = this.getCombatSystem();
             if (combatSystem) combatSystem.handlePlayerHit(data);
         });
 
-        this.game.networkClient.on('player_death', (data) => {
+        networkClient.on('player_death', (data) => {
             const combatSystem = this.getCombatSystem();
             if (combatSystem) combatSystem.handlePlayerDeath(data);
         });
 
-        this.game.networkClient.on('match_end', (data) => {
+        networkClient.on('match_end', (data) => {
             const combatSystem = this.getCombatSystem();
             if (combatSystem) combatSystem.handleMatchEnd(data);
         });
 
-        this.game.networkClient.on('player_respawn', (data) => {
+        networkClient.on('player_respawn', (data) => {
             const combatSystem = this.getCombatSystem();
             if (combatSystem) combatSystem.handlePlayerRespawn(data);
         });
@@ -106,7 +115,7 @@ export class NetworkSyncSystem extends System {
         this.handlersRegistered = true;
 
         // Mark handlers as ready to process queued messages
-        this.game.networkClient.markHandlersReady();
+        networkClient.markHandlersReady();
         console.log('✅ [NetworkSyncSystem] Handlers ready, queued messages will be processed');
     }
 
@@ -142,8 +151,15 @@ export class NetworkSyncSystem extends System {
 
         this.lastUpdate += deltaTime;
 
+        // DEBUG: Log deltaTime every 60 frames
+        this.debugDeltaCount = (this.debugDeltaCount || 0) + 1;
+        if (this.debugDeltaCount % 60 === 0) {
+            console.log('[NetworkSync] deltaTime:', deltaTime, 'lastUpdate:', this.lastUpdate, 'interval:', this.updateInterval);
+        }
+
         // Send local player state at update rate
         if (this.lastUpdate >= this.updateInterval) {
+            console.log('[NetworkSync] Time to send state! lastUpdate:', this.lastUpdate, 'interval:', this.updateInterval);
             this.sendLocalPlayerState();
             this.lastUpdate = 0;
         }
@@ -167,11 +183,13 @@ export class NetworkSyncSystem extends System {
      * @private
      */
     sendLocalPlayerState() {
+        console.log('[NetworkSync] sendLocalPlayerState() called');
         const localPlayer = this.getLocalPlayer();
         if (!localPlayer) {
             console.warn('[NetworkSync] No local player found - cannot send state');
             return;
         }
+        console.log('[NetworkSync] Local player found:', localPlayer);
 
         const position = localPlayer.getComponent('position');
         const velocity = localPlayer.getComponent('velocity');
@@ -244,13 +262,14 @@ export class NetworkSyncSystem extends System {
         // Update all remote players
         for (const playerState of data.players) {
             const isLocal = playerState.playerId === this.game.localPlayerId;
-            console.log(`[NetworkSync] Player ${playerState.playerId.substring(0, 8)}: ${isLocal ? 'LOCAL (reconcile)' : 'REMOTE (buffer)'}`);
+            console.log(`[NetworkSync] Player ${playerState.playerId.substring(0, 8)}: ${isLocal ? 'LOCAL' : 'REMOTE'} at (${playerState.x}, ${playerState.y})`);
 
             if (isLocal) {
                 // Server reconciliation for local player
                 this.reconcileLocalPlayer(playerState);
             } else {
                 // Buffer state for remote player interpolation
+                console.log(`[NetworkSync] Buffering remote player ${playerState.playerId.substring(0, 8)} state`);
                 this.bufferRemotePlayerState(playerState);
             }
         }
@@ -290,7 +309,7 @@ export class NetworkSyncSystem extends System {
      * @param {Object} state - Remote player state
      */
     bufferRemotePlayerState(state) {
-        console.log('[NetworkSync] bufferRemotePlayerState for:', state.playerId, 'pos:', state.x, state.y);
+        console.log('[NetworkSync] bufferRemotePlayerState for:', state.playerId, 'pos:', state.x, state.y, 'timestamp:', state.timestamp);
 
         if (!this.stateBuffer.has(state.playerId)) {
             console.log('[NetworkSync] Creating new buffer for player:', state.playerId);
@@ -298,12 +317,17 @@ export class NetworkSyncSystem extends System {
         }
 
         const buffer = this.stateBuffer.get(state.playerId);
-        buffer.push({
-            ...state,
-            receivedAt: Date.now()
-        });
 
-        console.log('[NetworkSync] Buffer size for', state.playerId, ':', buffer.length);
+        // CRITICAL FIX: Server sends timestamp in milliseconds but we need it for interpolation
+        const stateWithTimestamp = {
+            ...state,
+            timestamp: state.timestamp || Date.now(), // Use server timestamp if available
+            receivedAt: Date.now()
+        };
+
+        buffer.push(stateWithTimestamp);
+
+        console.log('[NetworkSync] Buffer size for', state.playerId, ':', buffer.length, 'timestamp:', stateWithTimestamp.timestamp);
 
         // Keep buffer size limited (last 10 states)
         if (buffer.length > 10) {

@@ -62,6 +62,9 @@ func (r *Room) StopGameLoop() {
 // broadcastGameStateLocked broadcasts current game state to all clients
 // Assumes lock is already held
 func (r *Room) broadcastGameStateLocked() {
+	// Get current timestamp for all player states (consistent across all players)
+	now := time.Now().UnixMilli()
+
 	// Get all player states
 	playerStates := make([]map[string]interface{}, 0, len(r.Players))
 	for _, player := range r.Players {
@@ -75,6 +78,7 @@ func (r *Room) broadcastGameStateLocked() {
 			"facingRight": player.FacingRight,
 			"health":      player.Health,
 			"isAlive":     player.IsAlive,
+			"timestamp":   now, // CRITICAL: Add timestamp for interpolation
 		})
 	}
 
@@ -82,6 +86,6 @@ func (r *Room) broadcastGameStateLocked() {
 	r.broadcastLocked("game_state_sync", map[string]interface{}{
 		"players":   playerStates,
 		"tick":      r.currentTick,
-		"timestamp": time.Now().UnixMilli(),
+		"timestamp": now,
 	}, nil)
 }

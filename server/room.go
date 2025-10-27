@@ -138,21 +138,25 @@ func (r *Room) AddPlayer(player *Player) {
 
 // RemovePlayer removes a player from the room
 func (r *Room) RemovePlayer(player *Player) {
+	log.Printf("🚪 [RemovePlayer] START - Removing player %s (%s) from room %s", player.ID, player.Name, r.Code)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	delete(r.Players, player.ID)
-	log.Printf("[Room] Player %s left room %s (count: %d/%d)", player.ID, r.Code, len(r.Players), r.MaxPlayers)
+	log.Printf("🚪 [RemovePlayer] Player %s removed, remaining count: %d/%d", player.ID, len(r.Players), r.MaxPlayers)
 
 	// If room is empty, cleanup and remove
 	if len(r.Players) == 0 {
-		log.Printf("[Room] Room %s is now empty", r.Code)
+		log.Printf("⚠️ [RemovePlayer] Room %s is now EMPTY - calling cleanup()", r.Code)
 		// Cleanup room resources
 		r.cleanup()
 		// Room will be cleaned up by room manager
 		go roomManager.RemoveRoom(r.Code)
 		return
 	}
+
+	log.Printf("🚪 [RemovePlayer] Room %s still has %d players", r.Code, len(r.Players))
 
 	// Reassign host if necessary
 	if player.IsHost {
@@ -420,9 +424,10 @@ func (r *Room) startCountdown() {
 						})
 					}
 
-					// Start authoritative server game loop (20Hz tick rate)
-					go r.StartGameLoop()
-					log.Printf("[Room] Game loop started for room %s", r.Code)
+					// CRITICAL FIX: DO NOT start game loop here!
+					// Wait for ALL players to send "game_ready" message
+					// This ensures clients are loaded and connected before broadcasting game_state_sync
+					log.Printf("[Room] Match started, waiting for all players to send game_ready...")
 
 					return
 				}
@@ -499,25 +504,32 @@ func (r *Room) checkReadyState() {
 
 // cleanup cleans up room resources (timers, goroutines)
 func (r *Room) cleanup() {
-	log.Printf("[Room] Cleaning up room %s", r.Code)
+	log.Printf("🧹 [cleanup] START - Cleaning up room %s", r.Code)
+	log.Printf("🧹 [cleanup] IsGameActive before cleanup: %v", r.IsGameActive)
 
 	// Stop game loop if active
-	r.StopGameLoop()
+	if r.IsGameActive {
+		log.Printf("🧹 [cleanup] Stopping game loop for room %s", r.Code)
+		r.StopGameLoop()
+	}
 
 	// Stop wait timer if active
 	if r.WaitTimer != nil {
+		log.Printf("🧹 [cleanup] Stopping wait timer")
 		r.WaitTimer.Stop()
 		r.WaitTimer = nil
 	}
 
 	// Stop countdown timer if active
 	if r.CountdownTimer != nil {
+		log.Printf("🧹 [cleanup] Stopping countdown timer")
 		r.CountdownTimer.Stop()
 		r.CountdownTimer = nil
 	}
 
 	// Cancel countdown goroutine if active
 	if r.countdownCancel != nil {
+		log.Printf("🧹 [cleanup] Cancelling countdown goroutine")
 		close(r.countdownCancel)
 		r.countdownCancel = nil
 	}
@@ -525,6 +537,96 @@ func (r *Room) cleanup() {
 	r.CountdownActive = false
 	r.CountdownRemaining = 0
 	r.IsGameActive = false
+	log.Printf("🧹 [cleanup] Set IsGameActive = FALSE (THIS STOPS handlePlayerState from working!)")
 
-	log.Printf("[Room] Room %s cleaned up successfully", r.Code)
+	log.Printf("🧹 [cleanup] Room %s cleaned up successfully", r.Code)
+}
+
+// checkGameReady checks if all players have loaded their game clients and are ready for game loop
+func (r *Room) checkGameReady() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	log.Printf("[CHECK_GAME_READY] ========== START ==========")
+	log.Printf("[CHECK_GAME_READY] Room: %s", r.Code)
+	log.Printf("[CHECK_GAME_READY] Player count: %d", len(r.Players))
+	log.Printf("[CHECK_GAME_READY] IsGameActive: %v", r.IsGameActive)
+
+	// Check if game is already active (game loop already started)
+	if r.IsGameActive && r.stopGameLoop == nil {
+		log.Printf("[CHECK_GAME_READY] Game loop already running, ignoring")
+		return
+	}
+
+	// Count how many players are game-ready
+	readyCount := 0
+	for _, player := range r.Players {
+		log.Printf("[CHECK_GAME_READY] Player %s (%s) - GameReady: %v", player.ID, player.Name, player.GameReady)
+		if player.GameReady {
+			readyCount++
+		}
+	}
+
+	log.Printf("[CHECK_GAME_READY] %d/%d players game-ready", readyCount, len(r.Players))
+
+	// If ALL players are game-ready, start the game loop!
+	if readyCount == len(r.Players) && len(r.Players) >= 2 {
+		log.Printf("[CHECK_GAME_READY] ✅ ALL PLAYERS READY! Starting game loop...")
+
+		// CRITICAL: Initialize player spawn positions BEFORE starting game loop!
+		// Otherwise all players will be at (0, 0)
+		r.initializePlayerSpawnPositions()
+
+		// CRITICAL: Set IsGameActive = true BEFORE starting game loop!
+		// Otherwise game loop will immediately stop when it checks IsGameActive
+		r.IsGameActive = true
+		log.Printf("[CHECK_GAME_READY] Set IsGameActive = true")
+
+		// Start authoritative server game loop (20Hz tick rate)
+		go r.StartGameLoop()
+		log.Printf("[CHECK_GAME_READY] Game loop started for room %s", r.Code)
+	} else {
+		log.Printf("[CHECK_GAME_READY] Waiting for more players to be ready...")
+	}
+
+	log.Printf("[CHECK_GAME_READY] ========== END ==========")
+}
+
+// initializePlayerSpawnPositions sets initial spawn positions for all players
+// Assumes lock is already held by caller (checkGameReady)
+func (r *Room) initializePlayerSpawnPositions() {
+	// Spawn points positioned in visible corners of arena
+	// Map dimensions: 1536x896 pixels
+	// Spawn points at 20% and 80% of dimensions for good spacing
+	spawnPoints := []struct {
+		X float64
+		Y float64
+	}{
+		{X: 300, Y: 200},   // Top-left (20% from edges)
+		{X: 1200, Y: 200},  // Top-right (80% horizontal)
+		{X: 300, Y: 650},   // Bottom-left (75% vertical)
+		{X: 1200, Y: 650},  // Bottom-right
+	}
+
+	log.Printf("[SPAWN_INIT] ========== START ==========")
+	log.Printf("[SPAWN_INIT] Initializing spawn positions for %d players", len(r.Players))
+
+	playerIndex := 0
+	for _, player := range r.Players {
+		// Assign spawn point (cycle through available points if more than 4 players)
+		spawn := spawnPoints[playerIndex%len(spawnPoints)]
+
+		// Set player position
+		player.X = spawn.X
+		player.Y = spawn.Y
+		player.VX = 0
+		player.VY = 0
+
+		log.Printf("[SPAWN_INIT] Player %s (%s) spawned at (%.1f, %.1f)",
+			player.ID, player.Name, player.X, player.Y)
+
+		playerIndex++
+	}
+
+	log.Printf("[SPAWN_INIT] ========== END ==========")
 }

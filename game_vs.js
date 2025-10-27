@@ -344,12 +344,21 @@ export class GameVS extends Game {
             console.log('[GameVS] Connected to server successfully');
 
             // CRITICAL: Register NetworkSyncSystem handlers NOW (after networkClient exists and is connected)
+            console.log('🔧 [GameVS] About to register NetworkSyncSystem handlers...');
+            console.log('🔧 [GameVS] networkSyncSystem exists?', !!this.networkSyncSystem);
+            console.log('🔧 [GameVS] networkClient exists?', !!this.networkClient);
+            console.log('🔧 [GameVS] networkClient connected?', this.networkClient?.connected);
+
             if (this.networkSyncSystem) {
-                console.log('[GameVS] Registering NetworkSyncSystem handlers...');
+                console.log('✅ [GameVS] Registering NetworkSyncSystem handlers...');
                 this.networkSyncSystem.registerHandlers();
+                console.log('✅ [GameVS] Registration complete!');
             } else {
-                console.error('[GameVS] NetworkSyncSystem not found!');
+                console.error('❌ [GameVS] NetworkSyncSystem not found!');
             }
+
+            // NOTE: game_ready will be sent AFTER all players are created
+            // in createPlayersFromRoomState() - see line 461
 
         } catch (error) {
             console.error('[GameVS] Failed to connect to server:', error);
@@ -445,6 +454,14 @@ export class GameVS extends Game {
 
         this.playersReady = true;
         console.log(`[GameVS] All players created (${data.players.length})`);
+
+        // CRITICAL: Tell server we're ready for game loop to start
+        // Send game_ready ONLY AFTER all players are created and positioned
+        console.log('📨 [GameVS] Sending game_ready to server...');
+        this.networkClient.send('game_ready', {
+            playerId: this.localPlayerId
+        });
+        console.log('✅ [GameVS] game_ready sent!');
     }
 
     /**
@@ -527,13 +544,6 @@ export class GameVS extends Game {
             this.players.set(playerData.playerId, player);
 
             console.log('[GameVS] Local player created successfully');
-
-            // CRITICAL: Send player_ready to server so match can start
-            this.networkClient.send('player_ready', {
-                playerId: this.localPlayerId,
-                ready: true
-            });
-            console.log('[GameVS] Sent player_ready to server');
 
         } catch (error) {
             console.error('[GameVS] Failed to create local player:', error);

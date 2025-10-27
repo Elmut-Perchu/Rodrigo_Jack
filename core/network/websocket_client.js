@@ -17,7 +17,7 @@ export class WebSocketClient {
         this.playerName = null;
 
         // Message batching for performance
-        this.batchEnabled = true;
+        this.batchEnabled = false; // CRITICAL FIX: Disable batching - it was preventing player_state from reaching server!
         this.batchQueue = [];
         this.batchInterval = 16; // ~60fps (16ms)
         this.batchTimer = null;
@@ -65,10 +65,20 @@ export class WebSocketClient {
 
                 this.ws.onmessage = (event) => this._handleMessage(event);
                 this.ws.onerror = (error) => {
-                    console.error('[WebSocketClient] Connection error:', error);
+                    console.error('🚨 [WebSocketClient] Connection error:', error);
+                    console.error('🚨 [WebSocketClient] Error type:', error.type);
+                    console.error('🚨 [WebSocketClient] Error message:', error.message);
                     reject(error);
                 };
-                this.ws.onclose = () => this._handleClose();
+                this.ws.onclose = (event) => {
+                    console.log('🔌 [WebSocketClient] Connection closed event:', {
+                        code: event.code,
+                        reason: event.reason,
+                        wasClean: event.wasClean,
+                        timestamp: new Date().toISOString()
+                    });
+                    this._handleClose(event);
+                };
 
             } catch (error) {
                 console.error('[WebSocketClient] Failed to create WebSocket:', error);
@@ -240,6 +250,11 @@ export class WebSocketClient {
             const message = JSON.parse(event.data);
             console.log('[WebSocketClient] Received:', message);
 
+            // DEBUG: Log handlersReady state for game_state_sync
+            if (message.type === 'game_state_sync') {
+                console.log('🔥 [WebSocketClient] game_state_sync received! handlersReady:', this.handlersReady);
+            }
+
             // Queue messages if handlers not ready yet
             if (!this.handlersReady) {
                 console.log('[WebSocketClient] Queueing early message:', message.type);
@@ -277,8 +292,30 @@ export class WebSocketClient {
      * Handle WebSocket close
      * @private
      */
-    _handleClose() {
-        console.log('[WebSocketClient] Connection closed');
+    _handleClose(event) {
+        console.log('🔌 [WebSocketClient] _handleClose called with event:', event);
+
+        // Log close details
+        if (event) {
+            const closeReasons = {
+                1000: 'Normal Closure',
+                1001: 'Going Away',
+                1002: 'Protocol Error',
+                1003: 'Unsupported Data',
+                1005: 'No Status Received',
+                1006: 'Abnormal Closure (browser closed connection without close frame)',
+                1007: 'Invalid frame payload data',
+                1008: 'Policy Violation',
+                1009: 'Message too big',
+                1010: 'Missing Extension',
+                1011: 'Internal Error',
+                1015: 'TLS Handshake Failed'
+            };
+
+            console.log('🔌 [WebSocketClient] Close code:', event.code, '-', closeReasons[event.code] || 'Unknown');
+            console.log('🔌 [WebSocketClient] Close reason:', event.reason || '(no reason provided)');
+            console.log('🔌 [WebSocketClient] Was clean:', event.wasClean);
+        }
 
         // Attempt reconnect if not max attempts reached
         if (this.reconnectAttempts < this.maxReconnectAttempts && this.roomCode && this.playerName) {

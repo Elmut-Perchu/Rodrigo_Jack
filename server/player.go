@@ -20,6 +20,7 @@ type Player struct {
 	Conn            *websocket.Conn `json:"-"`
 	Room            *Room           `json:"-"`
 	IsReady         bool            `json:"isReady"`
+	GameReady       bool            `json:"gameReady"` // True when game client loaded and ready for game loop
 	IsHost          bool            `json:"isHost"`
 	SendChan        chan []byte     `json:"-"`
 	LastMessageTime time.Time       `json:"-"`
@@ -118,6 +119,8 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handleLobbyJoin(msg)
 	case "lobby_ready":
 		p.handleLobbyReady(msg)
+	case "game_ready":
+		p.handleGameReady(msg)
 	case "chat_message":
 		p.handleChatMessage(msg)
 	case "player_state":
@@ -226,6 +229,27 @@ func (p *Player) handleLobbyReady(msg *Message) {
 	log.Printf("[LOBBY_READY] ========== END ==========")
 }
 
+// handleGameReady handles when a player's game client is loaded and ready for game loop
+func (p *Player) handleGameReady(msg *Message) {
+	log.Printf("[GAME_READY] ========== START ==========")
+	log.Printf("[GAME_READY] Player ID: %s (%s)", p.ID, p.Name)
+
+	if p.Room == nil {
+		log.Printf("[GAME_READY] ERROR: Player %s not in a room", p.ID)
+		return
+	}
+
+	log.Printf("[GAME_READY] Player %s in room: %s", p.Name, p.Room.Code)
+
+	// Mark player as game-ready
+	p.GameReady = true
+	log.Printf("[GAME_READY] Player %s marked as GameReady", p.Name)
+
+	// Check if ALL players are game-ready, if so start the game loop
+	p.Room.checkGameReady()
+	log.Printf("[GAME_READY] ========== END ==========")
+}
+
 // handleChatMessage handles chat messages
 func (p *Player) handleChatMessage(msg *Message) {
 	if p.Room == nil {
@@ -279,7 +303,18 @@ func (p *Player) handleChatMessage(msg *Message) {
 
 // handlePlayerState handles player position/state updates with server-side validation
 func (p *Player) handlePlayerState(msg *Message) {
-	if p.Room == nil || !p.Room.IsGameActive {
+	// CRITICAL DEBUG: Log every call to understand why positions don't update
+	log.Printf("🎮 [handlePlayerState] Called for player %s (%s)", p.ID, p.Name)
+
+	if p.Room == nil {
+		log.Printf("❌ [handlePlayerState] Player %s has NO ROOM - returning early", p.Name)
+		return
+	}
+
+	log.Printf("🎮 [handlePlayerState] Player %s room: %s, IsGameActive: %v", p.Name, p.Room.Code, p.Room.IsGameActive)
+
+	if !p.Room.IsGameActive {
+		log.Printf("❌ [handlePlayerState] Game NOT ACTIVE in room %s - returning early (THIS IS THE PROBLEM!)", p.Room.Code)
 		return
 	}
 
@@ -289,8 +324,11 @@ func (p *Player) handlePlayerState(msg *Message) {
 	timeSinceLastUpdate := now.Sub(p.LastStateUpdate).Milliseconds()
 	if timeSinceLastUpdate < MIN_UPDATE_DELTA {
 		// Too fast, ignore this update
+		log.Printf("⏱️ [handlePlayerState] Rate limit: %dms since last update (need %dms) - skipping", timeSinceLastUpdate, MIN_UPDATE_DELTA)
 		return
 	}
+
+	log.Printf("✅ [handlePlayerState] Passed rate limit check for %s", p.Name)
 
 	// Extract state data
 	x, xOk := msg.Data["x"].(float64)
@@ -356,6 +394,9 @@ func (p *Player) handlePlayerState(msg *Message) {
 	}
 
 	// All validations passed, accept the update
+	log.Printf("✅ [handlePlayerState] All validations passed! Updating %s: (%.1f, %.1f) -> (%.1f, %.1f)",
+		p.Name, p.X, p.Y, x, y)
+
 	p.X = x
 	p.Y = y
 	p.VX = vx
@@ -369,6 +410,8 @@ func (p *Player) handlePlayerState(msg *Message) {
 	if facingRight, ok := msg.Data["facingRight"].(bool); ok {
 		p.FacingRight = facingRight
 	}
+
+	log.Printf("📊 [handlePlayerState] Position updated successfully for %s at (%.1f, %.1f)", p.Name, p.X, p.Y)
 
 	// NOTE: State broadcasting is handled by game loop (game_loop.go:82)
 	// This ensures single source of truth and consistent 20Hz tick rate
@@ -480,27 +523,17 @@ func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
 	}
 }
 
-// writePump sends messages from SendChan to WebSocket connection with timeout detection
+// writePump sends messages from SendChan to WebSocket connection
 func (p *Player) writePump() {
-	ticker := time.NewTicker(54 * time.Second)
-	pongTimeout := time.NewTimer(60 * time.Second)
-	pongReceived := make(chan struct{}, 1)
+	// CRITICAL FIX: Removed ping/pong timeout mechanism - browsers don't reliably respond to WebSocket PINGs
+	// Instead, we rely on:
+	// 1. Client actively sending player_state every 16ms during gameplay
+	// 2. TCP keepalive at OS level
+	// 3. Write deadline on each message (10s timeout)
 
 	defer func() {
-		ticker.Stop()
-		pongTimeout.Stop()
 		p.Conn.Close()
 	}()
-
-	// Setup pong handler
-	p.Conn.SetPongHandler(func(string) error {
-		// Pong received, reset timeout
-		select {
-		case pongReceived <- struct{}{}:
-		default:
-		}
-		return nil
-	})
 
 	for {
 		select {
@@ -516,44 +549,31 @@ func (p *Player) writePump() {
 				log.Printf("[Player] Write error: %v", err)
 				return
 			}
-
-		case <-ticker.C:
-			// Send ping
-			p.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := p.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("[Player] Ping error: %v", err)
-				return
-			}
-
-			// Reset pong timeout
-			pongTimeout.Reset(60 * time.Second)
-
-		case <-pongReceived:
-			// Pong received, connection is alive
-			// Timeout will be reset on next ping
-
-		case <-pongTimeout.C:
-			// No pong received within timeout, connection is dead (zombie)
-			log.Printf("[Player] Pong timeout, closing zombie connection: %s (%s)", p.ID, p.Name)
-			return
 		}
 	}
 }
 
 // Close cleans up player resources
 func (p *Player) Close() {
-	log.Printf("[Player] Closing connection: %s", p.ID)
+	log.Printf("🔌 [Player.Close] START - Closing connection for %s (%s)", p.ID, p.Name)
 
 	// Leave room if in one
 	if p.Room != nil {
+		log.Printf("🔌 [Player.Close] Player %s is in room %s, calling RemovePlayer", p.Name, p.Room.Code)
 		p.Room.RemovePlayer(p)
+	} else {
+		log.Printf("🔌 [Player.Close] Player %s has no room", p.Name)
 	}
 
 	// Close send channel
+	log.Printf("🔌 [Player.Close] Closing send channel for %s", p.Name)
 	close(p.SendChan)
 
 	// Close WebSocket connection
+	log.Printf("🔌 [Player.Close] Closing WebSocket for %s", p.Name)
 	p.Conn.Close()
+
+	log.Printf("🔌 [Player.Close] COMPLETE for %s", p.Name)
 }
 
 // generateUUID generates a cryptographically secure UUID
