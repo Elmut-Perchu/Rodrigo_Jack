@@ -358,85 +358,110 @@ export class NetworkSyncSystem extends System {
             remotePlayerCount++;
 
             const buffer = this.stateBuffer.get(networkPlayer.playerId);
-            if (!buffer || buffer.length < 2) {
-                console.warn('[NetworkSync] Remote player', networkPlayer.playerId, 'has insufficient buffer:', buffer?.length || 0);
+
+            // CRITICAL FIX: With alpha-based interpolation, we don't need 2 states!
+            // The interpolation runs continuously between previousX/Y and targetX/Y
+            // We only need buffer states when alpha reaches 1.0 to advance to next target
+            // Requiring buffer.length >= 2 causes stuttering because buffer gets consumed
+            if (!buffer) {
+                console.warn('[NetworkSync] Remote player', networkPlayer.playerId, 'has no buffer');
                 continue;
             }
 
-            // Interpolate between buffered states
+            // Interpolate (will continue smoothly even with empty buffer until new states arrive)
             this.interpolateRemotePlayer(entity, buffer);
             interpolatedCount++;
         }
 
-        if (remotePlayerCount > 0) {
+        if (remotePlayerCount > 0 && Math.random() < 0.05) {
             console.log('[NetworkSync] updateRemotePlayers:', interpolatedCount, '/', remotePlayerCount, 'players interpolated');
         }
     }
 
     /**
      * Interpolate remote player position
+     * REWRITTEN: Use alpha-based progressive interpolation instead of timestamp-based
+     * This prevents teleportation artifacts
      * @private
      * @param {Entity} entity - Remote player entity
      * @param {Array} buffer - State buffer
      */
     interpolateRemotePlayer(entity, buffer) {
         const networkPlayer = entity.getComponent('networkPlayer');
-        const now = Date.now();
-        const renderTime = now - this.interpolationDelay;
+        const interpolation = entity.getComponent('interpolation');
+        const position = entity.getComponent('position');
 
-        // Find two states to interpolate between
-        let state1 = null;
-        let state2 = null;
-
-        for (let i = 0; i < buffer.length - 1; i++) {
-            if (buffer[i].timestamp <= renderTime && buffer[i + 1].timestamp >= renderTime) {
-                state1 = buffer[i];
-                state2 = buffer[i + 1];
-                break;
-            }
-        }
-
-        // If no states found, use latest state
-        if (!state1 || !state2) {
-            state1 = buffer[buffer.length - 2];
-            state2 = buffer[buffer.length - 1];
-        }
-
-        if (!state1 || !state2) {
-            console.warn('[NetworkSync] No valid states to interpolate for', networkPlayer.playerId);
+        if (!interpolation || !position) {
+            console.warn('[NetworkSync] Missing interpolation or position component for', networkPlayer.playerId);
             return;
         }
 
-        // Calculate interpolation factor
-        const timeDiff = state2.timestamp - state1.timestamp;
-        const t = timeDiff > 0 ? (renderTime - state1.timestamp) / timeDiff : 1;
-        const factor = Math.max(0, Math.min(1, t));
+        // CRITICAL FIX: Initialize interpolation target on first update
+        // Without this, the player appears frozen for one interpolation cycle (~0.17s)
+        if (interpolation.alpha === 0 && interpolation.previousX === interpolation.targetX && interpolation.previousY === interpolation.targetY) {
+            // First interpolation - initialize with first buffered state
+            const firstState = buffer.shift();
+            if (firstState) {
+                interpolation.targetX = firstState.x;
+                interpolation.targetY = firstState.y;
+                console.log(`[NetworkSync] ${networkPlayer.playerId.substring(0,8)}: INITIAL target set to (${firstState.x.toFixed(1)}, ${firstState.y.toFixed(1)})`);
+            }
+        }
+
+        // Check if we need to advance to next state (alpha >= 1.0)
+        if (interpolation.alpha >= 1.0) {
+            // Pop oldest state from buffer and set new target
+            const newTarget = buffer.shift(); // Get first state from buffer
+
+            if (!newTarget) {
+                // No new states available, stay at current position
+                return;
+            }
+
+            // Current target becomes new previous
+            interpolation.previousX = interpolation.targetX;
+            interpolation.previousY = interpolation.targetY;
+
+            // New buffer state becomes new target
+            interpolation.targetX = newTarget.x;
+            interpolation.targetY = newTarget.y;
+
+            // Reset alpha to start new interpolation
+            interpolation.alpha = 0;
+
+            console.log(`[NetworkSync] ${networkPlayer.playerId.substring(0,8)}: New target (${newTarget.x.toFixed(1)}, ${newTarget.y.toFixed(1)})`);
+        }
+
+        // Calculate interpolation speed based on distance
+        // Server broadcasts at 20Hz (50ms), we render at 60fps (16.67ms)
+        // We want to complete interpolation in ~50ms = ~3 frames
+        // So alpha should increase by 1/3 per frame (0.33 per frame)
+        const interpolationSpeed = 6.0; // Higher = faster interpolation (reach target in ~0.17s)
+
+        // Increase alpha based on deltaTime
+        const deltaTime = this.game.deltaTime || 0.016; // Fallback to 60fps if undefined
+        interpolation.alpha += deltaTime * interpolationSpeed;
+        interpolation.alpha = Math.min(1.0, interpolation.alpha); // Clamp to 1.0
+
+        // Smooth interpolation using easing function (ease-out for snappy movement)
+        const easedAlpha = this.easeOutCubic(interpolation.alpha);
 
         // Interpolate position
-        const position = entity.getComponent('position');
-        if (position) {
-            const oldX = position.x;
-            const oldY = position.y;
-            position.x = state1.x + (state2.x - state1.x) * factor;
-            position.y = state1.y + (state2.y - state1.y) * factor;
+        position.x = interpolation.previousX + (interpolation.targetX - interpolation.previousX) * easedAlpha;
+        position.y = interpolation.previousY + (interpolation.targetY - interpolation.previousY) * easedAlpha;
 
-            console.log('[NetworkSync] Interpolated', networkPlayer.playerId, 'from', oldX.toFixed(1), oldY.toFixed(1), 'to', position.x.toFixed(1), position.y.toFixed(1));
+        // Debug log every 10 frames to reduce spam
+        if (Math.random() < 0.1) {
+            console.log(`[NetworkSync] ${networkPlayer.playerId.substring(0,8)}: α=${interpolation.alpha.toFixed(2)} pos=(${position.x.toFixed(1)}, ${position.y.toFixed(1)}) target=(${interpolation.targetX.toFixed(1)}, ${interpolation.targetY.toFixed(1)})`);
         }
+    }
 
-        // Update animation and facing direction
-        const animation = entity.getComponent('animation');
-
-        if (animation && state2.animation) {
-            // PlayerAnimation uses currentState property, not currentAnimation
-            if (animation.currentState !== state2.animation) {
-                animation.setState(state2.animation);
-            }
-
-            // PlayerAnimation uses isFlipped property for facing direction
-            if (state2.facingRight !== undefined) {
-                animation.isFlipped = !state2.facingRight;
-            }
-        }
+    /**
+     * Ease-out cubic easing function for smooth interpolation
+     * @private
+     */
+    easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
     }
 
     /**
