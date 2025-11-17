@@ -461,10 +461,13 @@ export class GameVS extends Game {
         this.playersReady = true;
         console.log(`[GameVS] All players created (${data.players.length})`);
 
-        // NOTE: game_ready is now sent from lobby BEFORE navigation
-        // This prevents race condition where players disconnect before server gets game_ready
-        // If we're here, server already received game_ready and started game loop
-        console.log('✅ [GameVS] Players ready (game_ready already sent from lobby)');
+        // CRITICAL FIX: Send game_ready AGAIN after reconnection!
+        // Even though lobby sent it before navigation, the WebSocket disconnected
+        // We need to tell server that THIS NEW CONNECTION is ready for game loop
+        console.log('📨 [GameVS] Sending game_ready after reconnection...');
+        this.networkClient.send('game_ready', {
+            playerId: this.localPlayerId
+        });
     }
 
     /**

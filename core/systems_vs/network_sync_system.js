@@ -11,27 +11,29 @@ export class NetworkSyncSystem extends System {
     constructor(game) {
         super(game);
 
-        this.updateRate = 60; // 60fps sync
-        this.updateInterval = 1 / this.updateRate; // CRITICAL FIX: Keep in SECONDS (0.01666s) to match deltaTime units!
+        // Client send rate matches server tick rate
+        this.updateRate = 20; // Match server 20Hz
+        this.updateInterval = 1 / this.updateRate; // 0.05s = 50ms
         this.lastUpdate = 0;
 
         // Client-side prediction
         this.predictionEnabled = true;
         this.reconciliationThreshold = 50; // 50px error threshold for snap correction
 
-        // Remote player interpolation
-        this.interpolationDelay = 100; // 100ms delay for smooth interpolation
-        this.stateBuffer = new Map(); // playerId -> [state history]
+        // ========== SIMPLE CLIENT-SIDE PREDICTION ==========
+        // Store LAST server state + smooth towards it with velocity extrapolation
+        // Simple, works with ANY tick rate, no complex timing issues
+
+        // Last known server state per player
+        this.lastServerState = new Map(); // playerId -> {x, y, vx, vy, timestamp}
+
+        // Smoothing factor for corrections (0.2 = gentle, 0.8 = aggressive)
+        this.smoothingFactor = 0.2;
 
         // Network stats
         this.lastPingTime = 0;
-        this.pingInterval = 1; // FIXED: Ping every 1 SECOND (not 1000 ms, we use seconds)
+        this.pingInterval = 1; // Ping every 1 SECOND
         this.latency = 0;
-
-        // Buffer cleanup
-        this.lastBufferCleanup = 0;
-        this.bufferCleanupInterval = 5; // FIXED: Cleanup every 5 SECONDS (not 5000 ms)
-        this.staleBufferThreshold = 30; // FIXED: 30 SECONDS without updates = stale (not 30000 ms)
 
         // Handlers will be registered in setGame() after game reference is set
         this.handlersRegistered = false;
@@ -57,9 +59,10 @@ export class NetworkSyncSystem extends System {
      * @private
      */
     registerHandlers() {
-        console.log('🔍 [NetworkSyncSystem] registerHandlers() called');
-        console.log('🔍 [NetworkSyncSystem] this.game:', !!this.game);
-        console.log('🔍 [NetworkSyncSystem] this.game.networkClient:', !!this.game?.networkClient);
+        console.error('🔥🔥🔥 [TEST 1] registerHandlers() CALLED');
+        console.error('🔥 [TEST 1] this.game exists?', !!this.game);
+        console.error('🔥 [TEST 1] this.game.networkClient exists?', !!this.game?.networkClient);
+        console.error('🔥 [TEST 1] Stack trace:', new Error().stack);
 
         // CRITICAL FIX: Check if game is GameVS instance with networkClient property
         const networkClient = this.game?.networkClient;
@@ -71,12 +74,16 @@ export class NetworkSyncSystem extends System {
             return;
         }
 
-        console.log('✅ [NetworkSyncSystem] networkClient exists, registering handlers...');
+        console.error('✅ [TEST 2] networkClient exists, registering handlers...');
+        console.error('🔥 [TEST 2] networkClient.on is a function?', typeof networkClient.on === 'function');
 
         // Game state sync
+        console.error('🔥 [TEST 3] Registering game_state_sync handler...');
         networkClient.on('game_state_sync', (data) => {
+            console.error('🔥🔥🔥 [TEST 4] game_state_sync HANDLER CALLED WITH DATA:', data);
             this.handleGameStateSync(data);
         });
+        console.error('🔥 [TEST 3] game_state_sync handler registered');
 
         // Pong for latency measurement
         networkClient.on('pong', (data) => {
@@ -134,48 +141,22 @@ export class NetworkSyncSystem extends System {
     }
 
     update(deltaTime) {
-        // DEBUG: Log every 60 frames (1 second at 60fps)
-        this.debugFrameCount = (this.debugFrameCount || 0) + 1;
-        if (this.debugFrameCount % 60 === 0) {
-            console.log('[NetworkSync] Update called - mode:', this.game.mode, 'connected:', this.game.networkClient?.connected);
-        }
-
-        if (!this.game.mode || this.game.mode !== 'vs') {
-            console.warn('[NetworkSync] Skipping - mode:', this.game.mode);
-            return;
-        }
-        if (!this.game.networkClient || !this.game.networkClient.connected) {
-            console.warn('[NetworkSync] Skipping - client:', !!this.game.networkClient, 'connected:', this.game.networkClient?.connected);
-            return;
-        }
+        if (!this.game.mode || this.game.mode !== 'vs') return;
+        if (!this.game.networkClient || !this.game.networkClient.connected) return;
 
         this.lastUpdate += deltaTime;
 
-        // DEBUG: Log deltaTime every 60 frames
-        this.debugDeltaCount = (this.debugDeltaCount || 0) + 1;
-        if (this.debugDeltaCount % 60 === 0) {
-            console.log('[NetworkSync] deltaTime:', deltaTime, 'lastUpdate:', this.lastUpdate, 'interval:', this.updateInterval);
-        }
-
         // Send local player state at update rate
         if (this.lastUpdate >= this.updateInterval) {
-            console.log('[NetworkSync] Time to send state! lastUpdate:', this.lastUpdate, 'interval:', this.updateInterval);
             this.sendLocalPlayerState();
             this.lastUpdate = 0;
         }
 
         // Update remote players with interpolation
-        this.updateRemotePlayers(deltaTime);
+        this.updateRemotePlayers();
 
         // Ping server for latency measurement
         this.updatePing(deltaTime);
-
-        // Cleanup stale buffers periodically
-        this.lastBufferCleanup += deltaTime;
-        if (this.lastBufferCleanup >= this.bufferCleanupInterval) {
-            this.cleanupStaleBuffers();
-            this.lastBufferCleanup = 0;
-        }
     }
 
     /**
@@ -183,22 +164,14 @@ export class NetworkSyncSystem extends System {
      * @private
      */
     sendLocalPlayerState() {
-        console.log('[NetworkSync] sendLocalPlayerState() called');
         const localPlayer = this.getLocalPlayer();
-        if (!localPlayer) {
-            console.warn('[NetworkSync] No local player found - cannot send state');
-            return;
-        }
-        console.log('[NetworkSync] Local player found:', localPlayer);
+        if (!localPlayer) return;
 
         const position = localPlayer.getComponent('position');
         const velocity = localPlayer.getComponent('velocity');
         const animation = localPlayer.getComponent('animation');
 
-        if (!position || !velocity) {
-            console.warn('[NetworkSync] Missing position or velocity component');
-            return;
-        }
+        if (!position || !velocity) return;
 
         // Map PlayerAnimation state back to network animation names
         let networkAnimation = 'idle';
@@ -217,7 +190,7 @@ export class NetworkSyncSystem extends System {
 
         const state = {
             playerId: this.game.localPlayerId,
-            x: Math.round(position.x * 100) / 100, // Round to 2 decimals
+            x: Math.round(position.x * 100) / 100,
             y: Math.round(position.y * 100) / 100,
             vx: Math.round(velocity.vx * 100) / 100,
             vy: Math.round(velocity.vy * 100) / 100,
@@ -226,7 +199,6 @@ export class NetworkSyncSystem extends System {
             timestamp: Date.now()
         };
 
-        console.log('[NetworkSync] Sending player_state:', state);
         this.game.networkClient.send('player_state', state);
     }
 
@@ -247,214 +219,159 @@ export class NetworkSyncSystem extends System {
 
     /**
      * Handle game state sync from server
+     * SIMPLE: Just store the latest state
      * @param {Object} data - Game state data
      */
     handleGameStateSync(data) {
-        console.log('🔥🔥🔥 [NetworkSync] handleGameStateSync CALLED! Players:', data?.players?.length);
+        console.error('🔥🔥🔥 [TEST 5] handleGameStateSync CALLED');
+        console.error('🔥 [TEST 5] data:', data);
+        console.error('🔥 [TEST 5] data.players:', data?.players);
 
         if (!data.players) {
-            console.warn('[NetworkSync] No players in game_state_sync');
+            console.error('❌ [TEST 5] NO PLAYERS IN DATA');
             return;
         }
 
-        console.log('[NetworkSync] Processing', data.players.length, 'player states');
+        const now = Date.now();
 
-        // Update all remote players
+        // Store latest server state for each remote player
         for (const playerState of data.players) {
-            const isLocal = playerState.playerId === this.game.localPlayerId;
-            console.log(`[NetworkSync] Player ${playerState.playerId.substring(0, 8)}: ${isLocal ? 'LOCAL' : 'REMOTE'} at (${playerState.x}, ${playerState.y})`);
+            console.error('🔥 [TEST 5] Processing player:', playerState.playerId, 'local?', playerState.playerId === this.game.localPlayerId);
 
-            if (isLocal) {
-                // Server reconciliation for local player
-                this.reconcileLocalPlayer(playerState);
-            } else {
-                // Buffer state for remote player interpolation
-                console.log(`[NetworkSync] Buffering remote player ${playerState.playerId.substring(0, 8)} state`);
-                this.bufferRemotePlayerState(playerState);
+            if (playerState.playerId !== this.game.localPlayerId) {
+                // Remote player - store latest state
+                this.lastServerState.set(playerState.playerId, {
+                    ...playerState,
+                    timestamp: now
+                });
+                console.error('✅ [TEST 5] Stored state for remote player:', playerState.playerId);
             }
         }
     }
 
-    /**
-     * Server reconciliation for local player
-     * DISABLED: Client has full authority over local player movement
-     * Only log errors for debugging, don't snap position
-     * @private
-     * @param {Object} serverState - Server's view of local player
-     */
-    reconcileLocalPlayer(serverState) {
-        // CRITICAL FIX: Do NOT reconcile local player position!
-        // This causes the "tug of war" effect where server constantly snaps player back
-        // In a fast-paced platformer, client must have full control of local movement
-
-        if (!this.predictionEnabled) return;
-
-        const localPlayer = this.getLocalPlayer();
-        if (!localPlayer) return;
-
-        const position = localPlayer.getComponent('position');
-        if (!position) return;
-
-        // Calculate position error (for debugging only)
-        const dx = serverState.x - position.x;
-        const dy = serverState.y - position.y;
-        const error = Math.sqrt(dx * dx + dy * dy);
-
-        // Log large errors for debugging (but don't snap!)
-        if (error > 100) {
-            console.warn(`[NetworkSync] Large position error: ${error.toFixed(2)}px (client vs server)`);
-        }
-
-        // ❌ DO NOT SNAP LOCAL PLAYER POSITION
-        // The client has full authority over its own player
-        // Only remote players are interpolated from server state
-    }
 
     /**
-     * Buffer remote player state for interpolation
+     * Update remote players with simple smooth movement
      * @private
-     * @param {Object} state - Remote player state
      */
-    bufferRemotePlayerState(state) {
-        console.log('[NetworkSync] bufferRemotePlayerState for:', state.playerId, 'pos:', state.x, state.y, 'timestamp:', state.timestamp);
+    updateRemotePlayers() {
+        // Log once every 60 frames
+        if (!this._updateLogCount) this._updateLogCount = 0;
+        this._updateLogCount++;
 
-        if (!this.stateBuffer.has(state.playerId)) {
-            console.log('[NetworkSync] Creating new buffer for player:', state.playerId);
-            this.stateBuffer.set(state.playerId, []);
+        if (this._updateLogCount % 60 === 0) {
+            console.error('🔥 [TEST 6] updateRemotePlayers called, entities:', this.game.entities.size);
+            console.error('🔥 [TEST 6] lastServerState size:', this.lastServerState.size);
+            console.error('🔥 [TEST 6] lastServerState keys:', Array.from(this.lastServerState.keys()));
         }
 
-        const buffer = this.stateBuffer.get(state.playerId);
-
-        // CRITICAL FIX: Server sends timestamp in milliseconds but we need it for interpolation
-        const stateWithTimestamp = {
-            ...state,
-            timestamp: state.timestamp || Date.now(), // Use server timestamp if available
-            receivedAt: Date.now()
-        };
-
-        buffer.push(stateWithTimestamp);
-
-        console.log('[NetworkSync] Buffer size for', state.playerId, ':', buffer.length, 'timestamp:', stateWithTimestamp.timestamp);
-
-        // Keep buffer size limited (last 10 states)
-        if (buffer.length > 10) {
-            buffer.shift();
-        }
-    }
-
-    /**
-     * Update remote players with interpolation
-     * @private
-     * @param {number} deltaTime - Time since last frame
-     */
-    updateRemotePlayers(deltaTime) {
         for (const entity of this.game.entities) {
             const networkPlayer = entity.getComponent('networkPlayer');
             if (!networkPlayer || networkPlayer.isLocal) continue;
 
-            const buffer = this.stateBuffer.get(networkPlayer.playerId);
+            if (this._updateLogCount % 60 === 0) {
+                console.error('🔥 [TEST 6] Found remote player entity, playerId:', networkPlayer.playerId);
+            }
 
-            // CRITICAL FIX: With alpha-based interpolation, we don't need 2 states!
-            // The interpolation runs continuously between previousX/Y and targetX/Y
-            // We only need buffer states when alpha reaches 1.0 to advance to next target
-            if (!buffer) {
+            const serverState = this.lastServerState.get(networkPlayer.playerId);
+            if (!serverState) {
+                if (this._updateLogCount % 60 === 0) {
+                    console.error('❌ [TEST 6] No server state for player:', networkPlayer.playerId);
+                    console.error('❌ [TEST 6] Available states:', Array.from(this.lastServerState.keys()));
+                }
                 continue;
             }
 
-            // Interpolate (will continue smoothly even with empty buffer until new states arrive)
-            this.interpolateRemotePlayer(entity, buffer);
+            if (this._updateLogCount % 60 === 0) {
+                console.error('✅ [TEST 6] Found matching state for player:', networkPlayer.playerId);
+            }
+
+            this.updateRemotePlayer(entity, serverState);
         }
     }
 
     /**
-     * Interpolate remote player position
-     * REWRITTEN: Use alpha-based progressive interpolation instead of timestamp-based
-     * This prevents teleportation artifacts
+     * Update remote player with simple smooth movement
+     * SIMPLE APPROACH: Smooth towards server position using lerp
+     *
      * @private
      * @param {Entity} entity - Remote player entity
-     * @param {Array} buffer - State buffer
+     * @param {Object} serverState - Latest server state {x, y, vx, vy, timestamp}
      */
-    interpolateRemotePlayer(entity, buffer) {
-        const networkPlayer = entity.getComponent('networkPlayer');
-        const interpolation = entity.getComponent('interpolation');
+    updateRemotePlayer(entity, serverState) {
         const position = entity.getComponent('position');
-
-        if (!interpolation || !position) {
-            console.warn('[NetworkSync] Missing interpolation or position component for', networkPlayer.playerId);
+        const visual = entity.getComponent('visual');
+        if (!position) {
+            console.error('❌ [updateRemotePlayer] No position component');
             return;
         }
 
-        // CRITICAL FIX: Initialize interpolation target on first update
-        // Without this, the player appears frozen for one interpolation cycle (~0.17s)
-        if (interpolation.alpha === 0 && interpolation.previousX === interpolation.targetX && interpolation.previousY === interpolation.targetY) {
-            // First interpolation - initialize with first buffered state
-            const firstState = buffer.shift();
-            if (firstState) {
-                interpolation.targetX = firstState.x;
-                interpolation.targetY = firstState.y;
-                console.log(`[NetworkSync] ${networkPlayer.playerId.substring(0,8)}: INITIAL target set to (${firstState.x.toFixed(1)}, ${firstState.y.toFixed(1)})`);
+        // Log before update (once every 60 calls)
+        if (!this._updatePlayerLogCount) this._updatePlayerLogCount = 0;
+        this._updatePlayerLogCount++;
+
+        if (this._updatePlayerLogCount % 60 === 0) {
+            console.error('🔥 [updateRemotePlayer] BEFORE - position:', position.x.toFixed(1), position.y.toFixed(1));
+            console.error('🔥 [updateRemotePlayer] SERVER - position:', serverState.x.toFixed(1), serverState.y.toFixed(1));
+            console.error('🔥 [updateRemotePlayer] visual exists?', !!visual);
+            console.error('🔥 [updateRemotePlayer] visual.div exists?', !!(visual && visual.div));
+        }
+
+        // Simple linear interpolation towards server position
+        // This creates smooth movement without complex prediction
+        position.x += (serverState.x - position.x) * this.smoothingFactor;
+        position.y += (serverState.y - position.y) * this.smoothingFactor;
+
+        if (this._updatePlayerLogCount % 60 === 0) {
+            console.error('🔥 [updateRemotePlayer] AFTER - position:', position.x.toFixed(1), position.y.toFixed(1));
+        }
+
+        // CRITICAL: Update visual position (otherwise player doesn't move on screen!)
+        if (visual && visual.div) {
+            visual.div.style.left = `${position.x}px`;
+            visual.div.style.top = `${position.y}px`;
+
+            if (this._updatePlayerLogCount % 60 === 0) {
+                console.error('✅ [updateRemotePlayer] Updated visual.div to:', visual.div.style.left, visual.div.style.top);
+            }
+        } else {
+            if (this._updatePlayerLogCount % 60 === 0) {
+                console.error('❌ [updateRemotePlayer] Cannot update visual.div - visual:', !!visual, 'div:', !!(visual && visual.div));
             }
         }
 
-        // Check if we need to advance to next state (alpha >= 1.0)
-        if (interpolation.alpha >= 1.0) {
-            // Pop oldest state from buffer and set new target
-            const newTarget = buffer.shift(); // Get first state from buffer
-
-            if (!newTarget) {
-                // No new states available, stay at current position
-                return;
-            }
-
-            // Current target becomes new previous
-            interpolation.previousX = interpolation.targetX;
-            interpolation.previousY = interpolation.targetY;
-
-            // New buffer state becomes new target
-            interpolation.targetX = newTarget.x;
-            interpolation.targetY = newTarget.y;
-
-            // Reset alpha to start new interpolation
-            interpolation.alpha = 0;
-
-            console.log(`[NetworkSync] ${networkPlayer.playerId.substring(0,8)}: New target (${newTarget.x.toFixed(1)}, ${newTarget.y.toFixed(1)})`);
-        }
-
-        // Calculate interpolation speed based on distance
-        // Server broadcasts at 20Hz (50ms), we render at 60fps (16.67ms)
-        // We want to complete interpolation in ~50ms = ~3 frames
-        // So alpha should increase by 1/3 per frame (0.33 per frame)
-        const interpolationSpeed = 6.0; // Higher = faster interpolation (reach target in ~0.17s)
-
-        // Increase alpha based on deltaTime
-        const deltaTime = this.game.deltaTime || 0.016; // Fallback to 60fps if undefined
-        interpolation.alpha += deltaTime * interpolationSpeed;
-        interpolation.alpha = Math.min(1.0, interpolation.alpha); // Clamp to 1.0
-
-        // Smooth interpolation using easing function (ease-out for snappy movement)
-        const easedAlpha = this.easeOutCubic(interpolation.alpha);
-
-        // Interpolate position
-        const oldX = position.x;
-        const oldY = position.y;
-        position.x = interpolation.previousX + (interpolation.targetX - interpolation.previousX) * easedAlpha;
-        position.y = interpolation.previousY + (interpolation.targetY - interpolation.previousY) * easedAlpha;
-
-        // 🔥 DEBUG: Log EVERY interpolation to see if it's working
-        console.log(`🎯 [INTERPOLATION] ${networkPlayer.playerId.substring(0,8)}: α=${interpolation.alpha.toFixed(2)} | prev=(${interpolation.previousX.toFixed(1)},${interpolation.previousY.toFixed(1)}) → target=(${interpolation.targetX.toFixed(1)},${interpolation.targetY.toFixed(1)}) | OLD=(${oldX.toFixed(1)},${oldY.toFixed(1)}) → NEW=(${position.x.toFixed(1)},${position.y.toFixed(1)})`);
-
-        // Verify position actually changed
-        if (oldX === position.x && oldY === position.y) {
-            console.warn(`⚠️ [INTERPOLATION] Position NOT CHANGED! prev=target=${interpolation.previousX.toFixed(1)},${interpolation.previousY.toFixed(1)}`);
-        }
+        // Update animation
+        this.updateAnimation(entity, serverState);
     }
 
     /**
-     * Ease-out cubic easing function for smooth interpolation
+     * Update remote player animation
      * @private
+     * @param {Entity} entity - Remote player entity
+     * @param {Object} serverState - Server state with animation data
      */
-    easeOutCubic(t) {
-        return 1 - Math.pow(1 - t, 3);
+    updateAnimation(entity, serverState) {
+        const animation = entity.getComponent('animation');
+        if (!animation || !serverState.animation) return;
+
+        // Map network animation to PlayerAnimation state
+        const networkToStateMap = {
+            'idle': 'idle',
+            'walk': 'run',
+            'jump': 'jump',
+            'attack': 'attack1',
+            'shoot': 'arrowShoot',
+            'cast': 'magicAttack',
+            'death': 'death'
+        };
+        const newState = networkToStateMap[serverState.animation] || 'idle';
+
+        if (animation.currentState !== newState) {
+            animation.setState(newState);
+        }
+
+        // Update facing direction
+        animation.isFlipped = !serverState.facingRight;
     }
 
     /**
@@ -482,11 +399,7 @@ export class NetworkSyncSystem extends System {
     handlePong(data) {
         const now = Date.now();
         this.latency = now - data.timestamp;
-
-        // Adjust interpolation delay based on latency
-        if (this.latency > 100) {
-            this.interpolationDelay = Math.min(this.latency * 1.5, 300);
-        }
+        // Latency measurement for debugging/stats only
     }
 
     /**
@@ -520,42 +433,9 @@ export class NetworkSyncSystem extends System {
         if (entity) {
             this.game.entities.delete(entity);
             this.game.players.delete(playerId);
-            this.stateBuffer.delete(playerId);
+            this.lastServerState.delete(playerId); // Clean up state
 
             console.log(`[NetworkSyncSystem] Removed remote player: ${playerId}`);
-        }
-    }
-
-    /**
-     * Cleanup stale state buffers for disconnected players
-     * @private
-     */
-    cleanupStaleBuffers() {
-        const now = Date.now();
-        let cleanedCount = 0;
-
-        for (const [playerId, buffer] of this.stateBuffer.entries()) {
-            if (buffer.length === 0) {
-                // Empty buffer, remove it
-                this.stateBuffer.delete(playerId);
-                cleanedCount++;
-                continue;
-            }
-
-            // Check last update time
-            const lastState = buffer[buffer.length - 1];
-            const timeSinceLastUpdate = now - (lastState.receivedAt || 0);
-
-            if (timeSinceLastUpdate > this.staleBufferThreshold) {
-                // Buffer is stale (player likely disconnected)
-                this.stateBuffer.delete(playerId);
-                cleanedCount++;
-                console.log(`[NetworkSyncSystem] Cleaned stale buffer for player ${playerId} (last update: ${(timeSinceLastUpdate / 1000).toFixed(1)}s ago)`);
-            }
-        }
-
-        if (cleanedCount > 0) {
-            console.log(`[NetworkSyncSystem] Cleaned ${cleanedCount} stale buffer(s)`);
         }
     }
 
@@ -567,9 +447,8 @@ export class NetworkSyncSystem extends System {
         return {
             latency: this.latency,
             updateRate: this.updateRate,
-            interpolationDelay: this.interpolationDelay,
-            remotePlayerCount: this.game.players.size - 1,
-            activeBuffers: this.stateBuffer.size
+            smoothingFactor: this.smoothingFactor,
+            remotePlayerCount: this.game.players.size - 1
         };
     }
 }

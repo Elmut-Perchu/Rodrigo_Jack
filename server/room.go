@@ -96,9 +96,65 @@ func NewRoom(code string) *Room {
 }
 
 // AddPlayer adds a player to the room
+// CRITICAL FIX: Support player reconnection (reuse ID if same name)
 func (r *Room) AddPlayer(player *Player) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// CRITICAL FIX: Check if player with same name already exists (reconnection)
+	// This handles page navigation (lobby → game) where WebSocket disconnects/reconnects
+	for existingID, existingPlayer := range r.Players {
+		if existingPlayer.Name == player.Name {
+			log.Printf("🔄 [Room] Player %s reconnecting, reusing ID %s", player.Name, existingID)
+
+			// Reuse existing ID instead of creating new one
+			player.ID = existingID
+			player.IsHost = existingPlayer.IsHost
+			player.IsReady = existingPlayer.IsReady
+			player.GameReady = existingPlayer.GameReady
+
+			// Preserve game state (position, health, etc.)
+			player.X = existingPlayer.X
+			player.Y = existingPlayer.Y
+			player.VX = existingPlayer.VX
+			player.VY = existingPlayer.VY
+			player.Health = existingPlayer.Health
+			player.IsAlive = existingPlayer.IsAlive
+
+			// Close old connection (if still open)
+			go existingPlayer.Conn.Close()
+
+			// Replace with new connection
+			r.Players[existingID] = player
+			player.Room = r
+
+			log.Printf("✅ [Room] Player %s reconnected with preserved state (x=%.1f, y=%.1f, health=%d)",
+				player.Name, player.X, player.Y, player.Health)
+
+			// Broadcast player_reconnected (not player_joined)
+			r.broadcastLocked("player_reconnected", map[string]interface{}{
+				"playerId":    player.ID,
+				"playerName":  player.Name,
+				"isHost":      player.IsHost,
+				"playerCount": len(r.Players),
+			}, nil)
+
+			// Send current room state to reconnected player
+			r.sendRoomStateLocked(player)
+
+			// Release lock (defer will NOT unlock because we return)
+			r.mu.Unlock()
+
+			// CRITICAL FIX: Check if all players are now game-ready!
+			// If this was the last player to reconnect and everyone has GameReady=true,
+			// we need to start the game loop
+			log.Printf("🔍 [Room] Checking if game should start after %s reconnection...", player.Name)
+			r.checkGameReady()
+			return
+		}
+	}
+
+	// NEW PLAYER (not reconnection) - use code below
 
 	// Set as host if first player
 	if len(r.Players) == 0 {
@@ -108,6 +164,7 @@ func (r *Room) AddPlayer(player *Player) {
 	}
 
 	r.Players[player.ID] = player
+	player.Room = r
 	log.Printf("[Room] Player %s joined room %s (count: %d/%d)", player.ID, r.Code, len(r.Players), r.MaxPlayers)
 
 	// Broadcast player_joined to all other players
@@ -301,8 +358,8 @@ func (r *Room) startGameLocked() {
 		"roomCode": r.Code,
 	}, nil)
 
-	// Start authoritative server game loop (20Hz tick rate)
-	go r.StartGameLoop()
+	// Game loop is now started in startMatchCountdown() after 3-2-1-GO countdown
+	// Do NOT start it here (was causing double game loops!)
 }
 
 // GetAllPlayerStates returns all player states for sync
@@ -551,10 +608,12 @@ func (r *Room) checkGameReady() {
 	log.Printf("[CHECK_GAME_READY] Room: %s", r.Code)
 	log.Printf("[CHECK_GAME_READY] Player count: %d", len(r.Players))
 	log.Printf("[CHECK_GAME_READY] IsGameActive: %v", r.IsGameActive)
+	log.Printf("[CHECK_GAME_READY] stopGameLoop != nil (running): %v", r.stopGameLoop != nil)
 
-	// Check if game is already active (game loop already started)
-	if r.IsGameActive && r.stopGameLoop == nil {
-		log.Printf("[CHECK_GAME_READY] Game loop already running, ignoring")
+	// CRITICAL FIX: Check if game loop is already running
+	// stopGameLoop != nil means StartGameLoop() was called and channel created
+	if r.IsGameActive && r.stopGameLoop != nil {
+		log.Printf("[CHECK_GAME_READY] ✅ Game loop already running, ignoring")
 		return
 	}
 
