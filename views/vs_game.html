@@ -324,6 +324,9 @@
                 // Create game instance
                 gameInstance = new GameVS('.container');
 
+                // 🔍 DEBUG: Expose to window for console debugging
+                window.game = gameInstance;
+
                 // Initialize VS mode
                 await gameInstance.initializeVSMode(roomCode, false); // isHost determined by server
 

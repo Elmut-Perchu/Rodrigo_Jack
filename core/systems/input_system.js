@@ -15,6 +15,14 @@ export class Input extends System {
                 const input = entity.getComponent('input');
                 const velocity = entity.getComponent('velocity');
                 const property = entity.getComponent('property');
+
+                // 🔍 DEBUG: Log input processing
+                if (!this._inputLogCount) this._inputLogCount = 0;
+                this._inputLogCount++;
+                if (this._inputLogCount % 120 === 0 && networkPlayer?.isLocal) {
+                    console.warn(`🔍 [INPUT] Processing local player: has input=${!!input}, vector=${input?.vector ? JSON.stringify(input.vector) : 'none'}, movable=${property?.movable}`);
+                }
+
                 if (input && input.vector && velocity && property && property.movable) {
                     velocity.vx = input.vector.h * property.speed;
                     if (input.vector.v > 0) {

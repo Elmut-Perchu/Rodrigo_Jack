@@ -433,10 +433,26 @@ export class GameVS extends Game {
     async handleRoomState(data) {
         console.log('[GameVS] Creating players from room state...');
 
+        // 🔍 DEBUG: Track duplicate spawns
+        console.warn('🔍 [DEBUG] handleRoomState called!');
+        console.warn('🔍 Current players in game:', Array.from(this.players.keys()));
+        console.warn('🔍 Players in room_state:', data.players?.map(p => p.playerId) || []);
+
         if (!data.players || data.players.length === 0) {
             console.warn('[GameVS] No players in room state');
             this.playersReady = true;
             return;
+        }
+
+        // 🔧 FIX: Clean up old players that are NOT in the new room_state
+        // This prevents stale players from previous connections
+        const newPlayerIds = new Set(data.players.map(p => p.playerId));
+        for (const [playerId, entity] of this.players.entries()) {
+            if (!newPlayerIds.has(playerId)) {
+                console.warn(`🧹 [CLEANUP] Removing stale player: ${playerId}`);
+                this.entities.delete(entity);
+                this.players.delete(playerId);
+            }
         }
 
         // Create all players

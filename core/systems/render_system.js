@@ -5,6 +5,15 @@ export class Render extends System {
         super();
         this.container = container;
         this.gameWorld = this.container.querySelector('.game-world');
+
+        // DIAGNOSTIC MODE: Track conflicts with NetworkSyncSystem
+        this.diagnosticMode = true; // SET TO FALSE after audit
+        this.updateStats = {
+            totalUpdates: 0,
+            remotePlayerUpdates: 0,
+            lastLogTime: 0
+        };
+        this.logCounter = 0;
     }
 
     update() {
@@ -12,7 +21,7 @@ export class Render extends System {
             const visual = entity.getComponent('visual');
             const position = entity.getComponent('position');
             const hitbox = entity.getComponent('circle_hitbox');
-            const networkPlayer = entity.getComponent('networkPlayer'); // NEW: For debug logging
+            const networkPlayer = entity.getComponent('networkPlayer');
 
             // Check required components first
             if (!position || !visual) return;
@@ -22,19 +31,51 @@ export class Render extends System {
                 // Only update if position changed (optimization)
                 const currentLeft = parseInt(visual.div.style.left) || 0;
                 const currentTop = parseInt(visual.div.style.top) || 0;
-                if (currentLeft !== position.x || currentTop !== position.y) {
+
+                // CRITICAL FIX: Always update remote players (interpolation creates micro-movements)
+                // parseInt() rounds values, so 1200.6 === 1200, causing skipped updates
+                const needsUpdate = (networkPlayer && !networkPlayer.isLocal)
+                    ? true  // Remote: always update every frame
+                    : (currentLeft !== Math.round(position.x) || currentTop !== Math.round(position.y));
+
+                if (needsUpdate) {
                     visual.div.style.left = `${position.x}px`;
                     visual.div.style.top = `${position.y}px`;
-                    // Debug: Log position update for network players
+                    this.updateStats.totalUpdates++;
+
+                    // DIAGNOSTIC: Track remote player updates
                     if (networkPlayer && !networkPlayer.isLocal) {
-                        // Only log significant movements (>10px) to avoid spam
-                        const deltaX = Math.abs(currentLeft - position.x);
-                        const deltaY = Math.abs(currentTop - position.y);
-                        if (deltaX > 10 || deltaY > 10) {
-                            console.log(`[RenderSystem] Remote player "${networkPlayer.playerName}" moved: (${currentLeft},${currentTop}) → (${position.x},${position.y})`);
+                        this.updateStats.remotePlayerUpdates++;
+                        this.logCounter++;
+
+                        // Log every 60 updates (~1 second at 60fps)
+                        if (this.diagnosticMode && this.logCounter % 60 === 0) {
+                            const deltaX = currentLeft - position.x;
+                            const deltaY = currentTop - position.y;
+                            console.log(`
+║ 🎨 [RENDER CONFLICT?] RenderSystem also updated visual.div!
+║ Player: ${networkPlayer.playerName}
+║ Changed: (${currentLeft},${currentTop}) → (${position.x.toFixed(1)},${position.y.toFixed(1)})
+║ Delta: (${deltaX.toFixed(1)}, ${deltaY.toFixed(1)})
+║ ⚠️  If NetworkSyncSystem also logs, this is a RACE CONDITION!`);
                         }
                     }
                 }
+
+                // Log stats every 5 seconds
+                const now = performance.now();
+                if (this.diagnosticMode && (now - this.updateStats.lastLogTime) > 5000) {
+                    console.log(`
+📊 [RENDER STATS] 5-second summary:
+   - Total visual updates: ${this.updateStats.totalUpdates}
+   - Remote player updates: ${this.updateStats.remotePlayerUpdates}
+   - Update rate: ${(this.updateStats.totalUpdates / 5).toFixed(1)} Hz`);
+
+                    this.updateStats.totalUpdates = 0;
+                    this.updateStats.remotePlayerUpdates = 0;
+                    this.updateStats.lastLogTime = now;
+                }
+
                 return;
             }
 

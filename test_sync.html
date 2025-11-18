@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Sync - Cercles Colorés</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a1a;
+            color: white;
+            font-family: monospace;
+            overflow: hidden;
+        }
+
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        #info h3 {
+            margin-bottom: 10px;
+            color: #4CAF50;
+        }
+
+        #info div {
+            margin: 5px 0;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: #2a2a2a;
+        }
+
+        #players {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .player-circle {
+            position: absolute;
+            border-radius: 50%;
+            box-shadow: 0 0 20px currentColor;
+            transition: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        #logs {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            width: 400px;
+            height: 150px;
+            background: rgba(0,0,0,0.9);
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 11px;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 5px;
+        }
+
+        .log-send { color: #4CAF50; }
+        .log-receive { color: #2196F3; }
+        .log-error { color: #f44336; }
+        .log-warning { color: #ff9800; }
+
+        #controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        #controls input {
+            padding: 5px;
+            margin: 5px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+
+        #controls button {
+            padding: 8px 15px;
+            margin: 5px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        #controls button:hover {
+            background: #45a049;
+        }
+
+        #controls button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <!-- Canvas pour les traînées -->
+    <canvas id="canvas"></canvas>
+
+    <!-- Container pour les cercles -->
+    <div id="players"></div>
+
+    <!-- Panneau d'info -->
+    <div id="info">
+        <h3>🔴 Test Sync Mode</h3>
+        <div>Status: <span id="status">Disconnected</span></div>
+        <div>Room: <span id="room">-</span></div>
+        <div>Player ID: <span id="playerId">-</span></div>
+        <div>Position: <span id="position">0, 0</span></div>
+        <div>Players: <span id="playerCount">0</span></div>
+        <div>FPS: <span id="fps">0</span></div>
+        <div>Ping: <span id="ping">-</span></div>
+    </div>
+
+    <!-- Contrôles -->
+    <div id="controls">
+        <h4>Quick Test</h4>
+        <div id="sessionInfo" style="font-size: 10px; color: #888; margin-bottom: 10px;">
+            Session: <span id="sessionDisplay">-</span>
+        </div>
+        <input type="text" id="playerName" placeholder="Name" value="Player">
+        <input type="text" id="roomCode" placeholder="Room Code" value="TEST">
+        <button id="connectBtn">Connect</button>
+        <button id="clearBtn">Clear Trails</button>
+        <button id="newSessionBtn" style="background: #ff9800;">New Session</button>
+        <br>
+        <small>← → to move, SPACE to jump</small>
+        <div id="playersInRoom" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #555;">
+            <h5>Players in Room:</h5>
+            <div id="playersList" style="font-size: 12px;"></div>
+        </div>
+    </div>
+
+    <!-- Logs -->
+    <div id="logs"></div>
+
+    <!-- Script principal -->
+    <script type="module" src="test_sync.js"></script>
+</body>
+</html>

@@ -19,6 +19,15 @@ export class Movement extends System {
                 return; // Remote player - controlled by NetworkSyncSystem
             }
 
+            // 🔍 DEBUG: Log local player movement
+            if (networkPlayer && networkPlayer.isLocal) {
+                if (!this._moveLogCount) this._moveLogCount = 0;
+                this._moveLogCount++;
+                if (this._moveLogCount % 120 === 0) {
+                    console.warn(`🔍 [MOVEMENT] Local player: pos(${position.x.toFixed(1)}, ${position.y.toFixed(1)}) vel(${velocity.vx.toFixed(1)}, ${velocity.vy.toFixed(1)})`);
+                }
+            }
+
             // Mettre à jour la position même pendant le knockback
             position.x += velocity.vx * deltaTime;
             position.y -= velocity.vy * deltaTime;

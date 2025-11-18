@@ -28,7 +28,19 @@ export class NetworkSyncSystem extends System {
         this.lastServerState = new Map(); // playerId -> {x, y, vx, vy, timestamp}
 
         // Smoothing factor for corrections (0.2 = gentle, 0.8 = aggressive)
-        this.smoothingFactor = 0.2;
+        // ✅ FIX #2 APPLIED: Changed from 0.2 to 0.6 for perfect sync with 20Hz server
+        // With 0.6: Reaches ~94% of target position within one server tick (3 frames)
+        // This eliminates visible lag and "catch-up" effect
+        this.smoothingFactor = 0.6;
+
+        // DIAGNOSTIC MODE: Enhanced logging for audit
+        this.diagnosticMode = true; // SET TO FALSE after audit
+        this.updateStats = {
+            totalUpdates: 0,
+            visualUpdates: 0,
+            positionUpdates: 0,
+            lastLogTime: 0
+        };
 
         // Network stats
         this.lastPingTime = 0;
@@ -81,7 +93,12 @@ export class NetworkSyncSystem extends System {
         console.error('🔥 [TEST 3] Registering game_state_sync handler...');
         networkClient.on('game_state_sync', (data) => {
             console.error('🔥🔥🔥 [TEST 4] game_state_sync HANDLER CALLED WITH DATA:', data);
-            this.handleGameStateSync(data);
+            try {
+                this.handleGameStateSync(data);
+            } catch (error) {
+                console.error('❌ [TEST 4] ERROR calling handleGameStateSync:', error);
+                console.error('❌ [TEST 4] Error stack:', error.stack);
+            }
         });
         console.error('🔥 [TEST 3] game_state_sync handler registered');
 
@@ -116,6 +133,11 @@ export class NetworkSyncSystem extends System {
             if (combatSystem) combatSystem.handlePlayerRespawn(data);
         });
 
+        // Position correction from server (anti-cheat)
+        networkClient.on('position_correction', (data) => {
+            this.handlePositionCorrection(data);
+        });
+
         console.log('[NetworkSyncSystem] Message handlers registered');
 
         // Mark as registered to prevent duplicate registration
@@ -141,8 +163,27 @@ export class NetworkSyncSystem extends System {
     }
 
     update(deltaTime) {
-        if (!this.game.mode || this.game.mode !== 'vs') return;
-        if (!this.game.networkClient || !this.game.networkClient.connected) return;
+        // 🔍 DEBUG: Log if update is being called
+        if (!this._updateCallCount) this._updateCallCount = 0;
+        this._updateCallCount++;
+        if (this._updateCallCount % 300 === 0) {
+            console.warn(`🔍 [UPDATE] NetworkSyncSystem.update() called ${this._updateCallCount} times`);
+            console.warn(`🔍 [UPDATE] mode=${this.game.mode}, connected=${this.game.networkClient?.connected}`);
+        }
+
+        if (!this.game.mode || this.game.mode !== 'vs') {
+            if (this._updateCallCount % 300 === 0) {
+                console.error('❌ [UPDATE] Exiting: mode is not "vs"');
+            }
+            return;
+        }
+
+        if (!this.game.networkClient || !this.game.networkClient.connected) {
+            if (this._updateCallCount % 300 === 0) {
+                console.error('❌ [UPDATE] Exiting: networkClient not connected');
+            }
+            return;
+        }
 
         this.lastUpdate += deltaTime;
 
@@ -165,13 +206,37 @@ export class NetworkSyncSystem extends System {
      */
     sendLocalPlayerState() {
         const localPlayer = this.getLocalPlayer();
-        if (!localPlayer) return;
+        if (!localPlayer) {
+            if (!this._noLocalPlayerWarned) {
+                console.error('🚨 [SEND] No local player found!');
+                this._noLocalPlayerWarned = true;
+            }
+            return;
+        }
 
         const position = localPlayer.getComponent('position');
         const velocity = localPlayer.getComponent('velocity');
         const animation = localPlayer.getComponent('animation');
+        const input = localPlayer.getComponent('input');
 
-        if (!position || !velocity) return;
+        if (!position) {
+            console.error('🚨 [SEND] Local player has NO position component!');
+            return;
+        }
+
+        if (!velocity) {
+            console.error('🚨 [SEND] Local player has NO velocity component!');
+            return;
+        }
+
+        // 🔍 CRITICAL DEBUG: Log RAW position values BEFORE rounding
+        if (!this._rawPosLogCount) this._rawPosLogCount = 0;
+        this._rawPosLogCount++;
+        if (this._rawPosLogCount % 60 === 0) {
+            console.warn(`🔍 [SEND RAW] position.x=${position.x}, position.y=${position.y}`);
+            console.warn(`🔍 [SEND RAW] velocity.vx=${velocity.vx}, velocity.vy=${velocity.vy}`);
+            console.warn(`🔍 [SEND RAW] has input: ${!!input}, networkPlayer.isLocal: ${localPlayer.getComponent('networkPlayer')?.isLocal}`);
+        }
 
         // Map PlayerAnimation state back to network animation names
         let networkAnimation = 'idle';
@@ -198,6 +263,9 @@ export class NetworkSyncSystem extends System {
             facingRight: animation ? !animation.isFlipped : true,
             timestamp: Date.now()
         };
+
+        // 🔍 DEBUG: Log what we're sending EVERY TIME to debug stuck position
+        console.error(`🚀 [SEND LOCAL] Sending x=${state.x}, y=${state.y}, vx=${state.vx}, vy=${state.vy}`);
 
         this.game.networkClient.send('player_state', state);
     }
@@ -230,6 +298,19 @@ export class NetworkSyncSystem extends System {
         if (!data.players) {
             console.error('❌ [TEST 5] NO PLAYERS IN DATA');
             return;
+        }
+
+        // 🔍 DEBUG: Log FIRST player state to see actual server values
+        if (data.players.length > 0) {
+            const firstPlayer = data.players[0];
+            console.warn('🔍 [DEBUG] First player in game_state_sync:', {
+                playerId: firstPlayer.playerId,
+                x: firstPlayer.x,
+                y: firstPlayer.y,
+                vx: firstPlayer.vx,
+                vy: firstPlayer.vy,
+                timestamp: data.timestamp
+            });
         }
 
         const now = Date.now();
@@ -299,45 +380,91 @@ export class NetworkSyncSystem extends System {
      * @param {Object} serverState - Latest server state {x, y, vx, vy, timestamp}
      */
     updateRemotePlayer(entity, serverState) {
+        console.error('🔥🔥🔥 [TEST 7] updateRemotePlayer CALLED! entity:', entity?.uuid, 'serverState:', serverState);
+
         const position = entity.getComponent('position');
+        console.error('🔥 [TEST 7] position component:', !!position, position);
+
         const visual = entity.getComponent('visual');
+        console.error('🔥 [TEST 7] visual component:', !!visual, visual);
+
+        const networkPlayer = entity.getComponent('networkPlayer');
+        console.error('🔥 [TEST 7] networkPlayer component:', !!networkPlayer, networkPlayer);
+
         if (!position) {
             console.error('❌ [updateRemotePlayer] No position component');
             return;
         }
 
-        // Log before update (once every 60 calls)
+        // Track stats
+        this.updateStats.totalUpdates++;
+        const now = performance.now();
+
+        // DIAGNOSTIC: Calculate delta and distance
+        const deltaX = serverState.x - position.x;
+        const deltaY = serverState.y - position.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        // Log detailed info every 60 frames (~1 second at 60fps)
         if (!this._updatePlayerLogCount) this._updatePlayerLogCount = 0;
         this._updatePlayerLogCount++;
 
-        if (this._updatePlayerLogCount % 60 === 0) {
-            console.error('🔥 [updateRemotePlayer] BEFORE - position:', position.x.toFixed(1), position.y.toFixed(1));
-            console.error('🔥 [updateRemotePlayer] SERVER - position:', serverState.x.toFixed(1), serverState.y.toFixed(1));
-            console.error('🔥 [updateRemotePlayer] visual exists?', !!visual);
-            console.error('🔥 [updateRemotePlayer] visual.div exists?', !!(visual && visual.div));
+        if (this.diagnosticMode && this._updatePlayerLogCount % 60 === 0) {
+            const playerName = networkPlayer?.playerName || 'Unknown';
+            console.log(`
+╔════════════════════════════════════════════════════════════
+║ 🔍 [AUDIT] Remote Player Update - ${playerName}
+╠════════════════════════════════════════════════════════════
+║ BEFORE Position: (${position.x.toFixed(1)}, ${position.y.toFixed(1)})
+║ SERVER Position: (${serverState.x.toFixed(1)}, ${serverState.y.toFixed(1)})
+║ Delta: (${deltaX.toFixed(1)}, ${deltaY.toFixed(1)}) = ${distance.toFixed(1)}px
+║ Smoothing Factor: ${this.smoothingFactor}
+║ Will Move: (${(deltaX * this.smoothingFactor).toFixed(1)}, ${(deltaY * this.smoothingFactor).toFixed(1)})
+╚════════════════════════════════════════════════════════════`);
         }
 
         // Simple linear interpolation towards server position
         // This creates smooth movement without complex prediction
-        position.x += (serverState.x - position.x) * this.smoothingFactor;
-        position.y += (serverState.y - position.y) * this.smoothingFactor;
+        const oldX = position.x;
+        const oldY = position.y;
 
-        if (this._updatePlayerLogCount % 60 === 0) {
-            console.error('🔥 [updateRemotePlayer] AFTER - position:', position.x.toFixed(1), position.y.toFixed(1));
-        }
+        console.error(`📍 [UPDATE] BEFORE: position=(${oldX}, ${oldY}), server=(${serverState.x}, ${serverState.y}), delta=(${deltaX}, ${deltaY})`);
 
-        // CRITICAL: Update visual position (otherwise player doesn't move on screen!)
+        position.x += deltaX * this.smoothingFactor;
+        position.y += deltaY * this.smoothingFactor;
+        this.updateStats.positionUpdates++;
+
+        console.error(`📍 [UPDATE] AFTER: position=(${position.x}, ${position.y}), moved=(${position.x - oldX}, ${position.y - oldY})`);
+
+        // 🔄 ROLLBACK: Restore visual.div update (removing it broke the system)
+        // Issue: Gravity/Movement systems fight with network position
+        // Without direct visual update, remote players vibrate and don't sync
         if (visual && visual.div) {
             visual.div.style.left = `${position.x}px`;
             visual.div.style.top = `${position.y}px`;
+            this.updateStats.visualUpdates++;
 
-            if (this._updatePlayerLogCount % 60 === 0) {
-                console.error('✅ [updateRemotePlayer] Updated visual.div to:', visual.div.style.left, visual.div.style.top);
+            if (this.diagnosticMode && this._updatePlayerLogCount % 60 === 0) {
+                console.log(`║ 🔄 [ROLLBACK] NetworkSync updating visual.div directly
+║ Position: (${position.x.toFixed(1)}, ${position.y.toFixed(1)})
+║ This is needed to bypass Gravity/Movement systems on remote players
+╚════════════════════════════════════════════════════════════`);
             }
-        } else {
-            if (this._updatePlayerLogCount % 60 === 0) {
-                console.error('❌ [updateRemotePlayer] Cannot update visual.div - visual:', !!visual, 'div:', !!(visual && visual.div));
-            }
+        }
+
+        // Log stats every 5 seconds
+        if (this.diagnosticMode && (now - this.updateStats.lastLogTime) > 5000) {
+            console.log(`
+📊 [AUDIT STATS] 5-second summary:
+   - Total updates: ${this.updateStats.totalUpdates}
+   - Position updates: ${this.updateStats.positionUpdates}
+   - Visual updates: ${this.updateStats.visualUpdates}
+   - Update rate: ${(this.updateStats.totalUpdates / 5).toFixed(1)} Hz`);
+
+            this.updateStats.totalUpdates = 0;
+            this.updateStats.positionUpdates = 0;
+            this.updateStats.visualUpdates = 0;
+            this.updateStats.lastLogTime = now;
         }
 
         // Update animation
@@ -400,6 +527,31 @@ export class NetworkSyncSystem extends System {
         const now = Date.now();
         this.latency = now - data.timestamp;
         // Latency measurement for debugging/stats only
+    }
+
+    /**
+     * Handle position correction from server (anti-cheat)
+     * Server detected invalid movement and is forcing correct position
+     * @param {Object} data - Correction data {x, y, vx, vy}
+     */
+    handlePositionCorrection(data) {
+        console.warn('🚨 [NetworkSync] Position correction received from server!', data);
+
+        const localPlayer = this.getLocalPlayer();
+        if (!localPlayer) return;
+
+        const position = localPlayer.getComponent('position');
+        const velocity = localPlayer.getComponent('velocity');
+
+        if (!position || !velocity) return;
+
+        // CRITICAL: Server authority - override local position immediately
+        position.x = data.x;
+        position.y = data.y;
+        velocity.vx = data.vx;
+        velocity.vy = data.vy;
+
+        console.warn(`🚨 [NetworkSync] Position corrected to (${data.x.toFixed(1)}, ${data.y.toFixed(1)})`);
     }
 
     /**

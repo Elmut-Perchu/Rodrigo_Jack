@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -25,6 +26,7 @@ type Player struct {
 	SendChan        chan []byte     `json:"-"`
 	LastMessageTime time.Time       `json:"-"`
 	MessageCount    int             `json:"-"`
+	closeChan       chan bool       // For stopping goroutines
 	// Game state
 	X           float64 `json:"x"`
 	Y           float64 `json:"y"`
@@ -36,6 +38,9 @@ type Player struct {
 	IsAlive     bool    `json:"isAlive"`
 	// Validation tracking
 	LastStateUpdate time.Time `json:"-"` // For rate limiting and movement validation
+	// Test mode fields
+	testRoomCode string
+	testPlayerId string
 }
 
 // Message represents a WebSocket message
@@ -53,6 +58,7 @@ func NewPlayer(conn *websocket.Conn) *Player {
 		IsReady:         false,
 		IsHost:          false,
 		SendChan:        make(chan []byte, 256),
+		closeChan:       make(chan bool),
 		Animation:       "idle",
 		FacingRight:     true,
 		Health:          100,
@@ -64,10 +70,30 @@ func NewPlayer(conn *websocket.Conn) *Player {
 
 	log.Printf("[Player] New player created: %s", player.ID)
 
+	// Register player in global map for test_handler
+	registerPlayer(player)
+
 	// Start write pump
 	go player.writePump()
 
 	return player
+}
+
+// Global player registry (used by test_handler for broadcasting)
+var allPlayers = make(map[string]*Player)
+var allPlayersMu sync.RWMutex
+
+// Register/unregister functions
+func registerPlayer(p *Player) {
+	allPlayersMu.Lock()
+	defer allPlayersMu.Unlock()
+	allPlayers[p.ID] = p
+}
+
+func unregisterPlayer(p *Player) {
+	allPlayersMu.Lock()
+	defer allPlayersMu.Unlock()
+	delete(allPlayers, p.ID)
 }
 
 // HandleMessages processes incoming WebSocket messages
@@ -93,19 +119,20 @@ func (p *Player) HandleMessages() {
 			break
 		}
 
-		// Log raw message data for debugging
-		log.Printf("[Player] %s received RAW data: %s", p.ID, string(messageData))
+		// Reset read deadline on ANY message received (not just pongs)
+		p.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 
 		// Parse message
 		var msg Message
 		if err := json.Unmarshal(messageData, &msg); err != nil {
 			log.Printf("[Player] Failed to parse message: %v", err)
-			log.Printf("[Player] Failed data was: %s", string(messageData))
 			continue
 		}
 
-		log.Printf("[Player] %s received message type: %s", p.ID, msg.Type)
-		log.Printf("[Player] %s message data: %+v", p.ID, msg.Data)
+		// Only log non-routine messages (skip test_update, ping, pong for less spam)
+		if msg.Type != "test_update" && msg.Type != "ping" && msg.Type != "pong" && msg.Type != "player_state" {
+			log.Printf("[Player] %s received: %s", p.ID, msg.Type)
+		}
 
 		// Handle message based on type
 		p.handleMessage(&msg)
@@ -132,6 +159,9 @@ func (p *Player) handleMessage(msg *Message) {
 		p.sendMessage("pong", map[string]interface{}{
 			"timestamp": msg.Data["timestamp"],
 		})
+	case "pong":
+		// Client responded to our ping - just acknowledge, no action needed
+		log.Printf("[Player] %s pong received", p.ID)
 	case "draw_line":
 		// Simple test: broadcast draw command to all other players in room
 		p.handleDrawLine(msg)
@@ -140,6 +170,9 @@ func (p *Player) handleMessage(msg *Message) {
 		if p.Room != nil {
 			p.Room.Broadcast("clear_canvas", map[string]interface{}{}, nil)
 		}
+	// Test sync messages
+	case "test_join", "test_update", "test_leave":
+		handleTestMessage(p, msg.Type, msg.Data)
 	default:
 		log.Printf("[Player] Unknown message type: %s", msg.Type)
 	}
@@ -557,12 +590,25 @@ func (p *Player) writePump() {
 func (p *Player) Close() {
 	log.Printf("🔌 [Player.Close] START - Closing connection for %s (%s)", p.ID, p.Name)
 
+	// Leave test room if in one
+	if p.testRoomCode != "" {
+		handleTestLeave(p)
+	}
+
 	// Leave room if in one
 	if p.Room != nil {
 		log.Printf("🔌 [Player.Close] Player %s is in room %s, calling RemovePlayer", p.Name, p.Room.Code)
 		p.Room.RemovePlayer(p)
 	} else {
 		log.Printf("🔌 [Player.Close] Player %s has no room", p.Name)
+	}
+
+	// Unregister from global player map
+	unregisterPlayer(p)
+
+	// Signal goroutines to stop
+	if p.closeChan != nil {
+		close(p.closeChan)
 	}
 
 	// Close send channel
