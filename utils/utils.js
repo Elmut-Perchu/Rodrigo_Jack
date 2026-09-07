@@ -11,6 +11,10 @@ export function createMenu(game, div) {
     div.style.position = 'fixed';
     div.style.width = '500px';
     div.style.height = '500px'; // Augmenté pour accueillir plus d'options
+    // On a short window the pause menu ran off the bottom with no way to
+    // reach the options at the end of it.
+    div.style.maxHeight = 'calc(100vh - 32px)';
+    div.style.overflowY = 'auto';
     div.style.backgroundColor = '#c1e1ec';
     div.style.border = '2px solid';
     div.style.zIndex = '1000';
@@ -263,7 +267,14 @@ export function createMainMenu(gameInstance, container) {
     menuContainer.style.height = '100%';
     menuContainer.style.display = 'flex';
     menuContainer.style.justifyContent = 'center';
-    menuContainer.style.alignItems = 'center';
+    // flex-start, not center: a centred flex item taller than its container
+    // overflows on BOTH sides, and the half above the top cannot be scrolled
+    // back to. The auto margins on the panel below centre it whenever there is
+    // room and give way when there is not.
+    menuContainer.style.alignItems = 'flex-start';
+    menuContainer.style.overflowY = 'auto';
+    menuContainer.style.padding = '24px 0';
+    menuContainer.style.boxSizing = 'border-box';
     menuContainer.style.backgroundColor = 'rgba(158, 161, 144, 0.8)';
     menuContainer.style.backgroundImage = "url('assets/cutscenes/map3_to_map4/frame_2.webp')";
     menuContainer.style.backgroundSize = 'cover';
@@ -281,6 +292,7 @@ export function createMainMenu(gameInstance, container) {
     menu.style.flexDirection = 'column';
     menu.style.gap = '1rem';
     menu.style.minWidth = '300px';
+    menu.style.margin = 'auto 0';
 
     // Titre
     const title = document.createElement('h1');
