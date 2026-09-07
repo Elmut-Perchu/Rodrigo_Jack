@@ -111,11 +111,18 @@ export class VSSpectre extends System {
             } else {
                 state.charge = Math.min(1, state.charge + (deltaTime * 1000) / VS_SPECTRE.CHANNEL_TIME);
 
-                // Bought with footspeed. VSInput has already written this
-                // frame's velocity from the direction keys, so scaling it here
-                // is what the caster feels.
+                // Bought with footspeed. Written as a ceiling rather than a
+                // multiplier: physics runs several steps per frame, and a
+                // factor reapplied on each of them compounds - it dragged the
+                // caster down to a tenth of walking pace instead of a half.
+                // A cap gives the same answer however many times it is applied.
                 const velocity = entity.getComponent('velocity');
-                if (velocity) velocity.vx *= VS_SPECTRE.CHANNEL_SLOWDOWN;
+                if (velocity) {
+                    const cap = property.speed * VS_SPECTRE.CHANNEL_SLOWDOWN;
+                    if (Math.abs(velocity.vx) > cap) {
+                        velocity.vx = Math.sign(velocity.vx) * cap;
+                    }
+                }
             }
         }
 

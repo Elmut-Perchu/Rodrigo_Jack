@@ -25,6 +25,7 @@ import { getBotLevel } from './constants/bot_constants.js';
 
 // Shared with the lobby so both pages present the same session identity
 import { getVsSessionId } from './core/network/websocket_client.js';
+import { FIXED_STEP, MAX_SUBSTEPS } from './constants/vs_movement_constants.js';
 
 export class GameVSSimple {
     constructor() {
@@ -33,6 +34,9 @@ export class GameVSSimple {
         this.mode = 'vs';
         this.isPaused = false;
         this.lastTime = 0;
+
+        // Physics time owed but not yet stepped, carried between frames.
+        this.accumulator = 0;
 
         // Network state
         this.ws = null;
@@ -158,6 +162,20 @@ export class GameVSSimple {
         console.log(`🗺️ [GameVSSimple] Created ${tileCount} tiles`);
     }
 
+    /**
+     * One displayed frame: several physics steps, then one pass of drawing.
+     *
+     * Physics is stepped at a fixed rate rather than against the frame time
+     * because semi-implicit Euler is not frame-rate independent - the same
+     * jump measured 95px at 120fps and 84px at 20fps, an 11px spread on an
+     * arena that asks for 128px steps. Whatever time is left over is carried
+     * into the next frame rather than rounded away, so the simulation keeps
+     * real time without its arcs depending on the screen it is played on.
+     *
+     * Rendering and audio sit outside the inner loop (they set fixedStep to
+     * false): drawing the same sprite twice between two refreshes is work
+     * nobody can see.
+     */
     loop(currentTime) {
         if (this.isPaused) {
             requestAnimationFrame(this.loop.bind(this));
@@ -170,10 +188,24 @@ export class GameVSSimple {
         // Cap deltaTime to prevent huge jumps
         const cappedDelta = Math.min(deltaTime, 0.05);
 
-        // Update all systems
-        this.systems.forEach(system => {
-            system.update(cappedDelta);
-        });
+        this.accumulator += cappedDelta;
+
+        let steps = 0;
+        while (this.accumulator >= FIXED_STEP && steps < MAX_SUBSTEPS) {
+            for (const system of this.systems) {
+                if (system.fixedStep !== false) system.update(FIXED_STEP);
+            }
+            this.accumulator -= FIXED_STEP;
+            steps++;
+        }
+
+        // Hit the ceiling: the machine is losing badly, and working through
+        // the backlog would only make the next frame later still.
+        if (steps === MAX_SUBSTEPS) this.accumulator = 0;
+
+        for (const system of this.systems) {
+            if (system.fixedStep === false) system.update(cappedDelta);
+        }
 
         requestAnimationFrame(this.loop.bind(this));
     }

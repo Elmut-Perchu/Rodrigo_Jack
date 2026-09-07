@@ -4,6 +4,11 @@ import { System } from '../systems/system.js';
 export class VSRender extends System {
     constructor(game) {
         super(game);
+
+        // Drawing runs once per displayed frame, not once per physics step:
+        // painting the same sprite twice between two refreshes is wasted DOM
+        // work nobody can see.
+        this.fixedStep = false;
         this.gameWorld = document.querySelector('.game-world');
         this.initialized = new Set(); // Track initialized entities
         this.paintedTiles = new Set(); // Tiles whose tileset sprite is applied

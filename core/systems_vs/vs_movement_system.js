@@ -2,6 +2,15 @@
 import { System } from '../systems/system.js';
 
 export class VSMovement extends System {
+    constructor(game) {
+        super(game);
+
+        // Integrated at a fixed rate, not per frame: semi-implicit Euler is
+        // not frame-rate independent, and the same jump used to measure 95px
+        // at 120fps against 84px at 20fps.
+        this.fixedStep = true;
+    }
+
     update(deltaTime) {
         this.entities.forEach((entity) => {
             const position = entity.getComponent('position');

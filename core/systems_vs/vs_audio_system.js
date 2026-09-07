@@ -24,6 +24,9 @@ const BASE_PATH = (typeof window !== 'undefined' && window.location.pathname.inc
 export class VSAudio extends System {
     constructor(game) {
         super(game);
+
+        // Reads what VSRender just drew, so it follows the same cadence.
+        this.fixedStep = false;
         this.game = game;
         this.audio = new Audio();
         this.remoteAudio = new Audio();
