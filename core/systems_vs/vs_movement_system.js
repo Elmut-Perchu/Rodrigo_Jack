@@ -1,0 +1,32 @@
+// core/systems_vs/vs_movement_system.js - VS Mode Movement System
+import { System } from '../systems/system.js';
+
+export class VSMovement extends System {
+    update(deltaTime) {
+        this.entities.forEach((entity) => {
+            const position = entity.getComponent('position');
+            const velocity = entity.getComponent('velocity');
+            const networkPlayer = entity.getComponent('networkPlayer');
+
+            if (!position || !velocity) return;
+
+            if (networkPlayer && networkPlayer.simulated) {
+                // Simulated here (local player or bot): integrate velocity
+                position.x += velocity.vx * deltaTime;
+                position.y -= velocity.vy * deltaTime;
+            } else if (networkPlayer) {
+                // Remote player: interpolate from buffer
+                const interp = entity.getComponent('interpolation');
+                if (interp) {
+                    const interpolated = interp.getInterpolatedPosition();
+                    if (interpolated) {
+                        position.x = interpolated.x;
+                        position.y = interpolated.y;
+                    }
+                }
+            } else {
+                // Non-player entity (like tiles) - don't move
+            }
+        });
+    }
+}
