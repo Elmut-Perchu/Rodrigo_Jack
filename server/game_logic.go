@@ -3,34 +3,50 @@ package main
 import (
 	"log"
 	"math"
+	"sort"
 )
 
 // AttackType represents different attack types
 type AttackType string
 
 const (
-	AttackMelee  AttackType = "melee"
-	AttackArrow  AttackType = "arrow"
-	AttackMagic  AttackType = "magic"
+	AttackMelee AttackType = "melee"
+	AttackArrow AttackType = "arrow"
+	AttackMagic AttackType = "magic"
 )
 
 // AttackData represents an attack action
 type AttackData struct {
-	AttackerID       string     `json:"attackerId"`
-	AttackType       AttackType `json:"attackType"`
-	X                float64    `json:"x"`
-	Y                float64    `json:"y"`
-	Direction        string     `json:"direction"` // "left" or "right"
-	FacingRight      bool       `json:"facingRight"`
-	DamageMultiplier float64    `json:"damageMultiplier"` // Power-up damage multiplier
+	AttackerID  string     `json:"attackerId"`
+	AttackType  AttackType `json:"attackType"`
+	X           float64    `json:"x"`
+	Y           float64    `json:"y"`
+	Direction   string     `json:"direction"` // "left" or "right"
+	FacingRight bool       `json:"facingRight"`
+	// Which of the three sword animations this blow is. The server has no
+	// opinion on it - reach and damage are the same either way - but it is
+	// relayed so every client shows the blow that was actually thrown, and so
+	// two blades meeting in a parry can be kept visually distinct.
+	Swing            string  `json:"swing,omitempty"`
+	DamageMultiplier float64 `json:"damageMultiplier"` // Power-up damage multiplier
 }
 
-// Attack ranges (in pixels)
+// Attack ranges (in pixels).
+//
+// Distances are measured between player origins (top-left of a 110x110
+// sprite), so a 30px melee range meant the two sprites had to overlap almost
+// exactly before a sword could connect - in practice it never did. One sprite
+// width plus a little reach is what actually feels right.
 const (
-	MeleeRange  = 30.0
+	MeleeRange  = 120.0
 	ArrowRange  = 400.0
 	MagicRange  = 200.0
 	MagicRadius = 80.0 // AoE radius for magic
+
+	// How far the shooter's reported arrow impact may sit from the victim's
+	// server-side position before the claim is rejected. Remote players are
+	// drawn interpolated ~100ms in the past, so some slack is expected.
+	ArrowHitTolerance = 160.0
 )
 
 // Damage values
@@ -51,18 +67,15 @@ func ProcessAttack(room *Room, attackData AttackData) {
 		return
 	}
 
-	log.Printf("[Combat] Processing %s attack from %s at (%.2f, %.2f)",
-		attackData.AttackType, attacker.Name, attackData.X, attackData.Y)
+	broadcastAttack(room, attackData)
+	applyAttackDamage(room, attacker, attackData)
+}
 
-	// Find victims based on attack type
-	victims := findVictims(room, attacker, attackData)
-
-	// Apply damage to victims
-	for _, victim := range victims {
-		applyDamage(room, attacker, victim, attackData.AttackType, attackData.DamageMultiplier)
-	}
-
-	// Broadcast attack to all players for visual effects
+// broadcastAttack tells every client to play the swing.
+//
+// Kept separate from the damage so a sword blow can be shown immediately
+// while its outcome waits out the parry window (see parry.go).
+func broadcastAttack(room *Room, attackData AttackData) {
 	room.Broadcast("player_attack", map[string]interface{}{
 		"attackerId":  attackData.AttackerID,
 		"attackType":  attackData.AttackType,
@@ -70,7 +83,20 @@ func ProcessAttack(room *Room, attackData AttackData) {
 		"y":           attackData.Y,
 		"direction":   attackData.Direction,
 		"facingRight": attackData.FacingRight,
+		"swing":       attackData.Swing,
 	}, nil)
+}
+
+// applyAttackDamage resolves who the attack hits and hurts them.
+func applyAttackDamage(room *Room, attacker *Player, attackData AttackData) {
+	log.Printf("[Combat] Processing %s attack from %s at (%.2f, %.2f)",
+		attackData.AttackType, attacker.Name, attackData.X, attackData.Y)
+
+	victims := findVictims(room, attacker, attackData)
+
+	for _, victim := range victims {
+		applyDamage(room, attacker, victim, attackData.AttackType, attackData.DamageMultiplier)
+	}
 }
 
 // findVictims identifies players hit by the attack
@@ -83,6 +109,12 @@ func findVictims(room *Room, attacker *Player, attackData AttackData) []*Player 
 	for _, player := range room.Players {
 		// Skip attacker and dead players
 		if player.ID == attacker.ID || !player.IsAlive {
+			continue
+		}
+
+		// Allies are not targets. In free-for-all everyone has a team of
+		// their own, so this never fires there (see bots.go).
+		if sameTeam(attacker, player) {
 			continue
 		}
 
@@ -216,20 +248,14 @@ func handlePlayerDeath(room *Room, victim *Player, attacker *Player) {
 		"killerName": attacker.Name,
 	}, nil)
 
-	// Count remaining alive players
-	aliveCount := 0
-	var lastAlive *Player
+	// The match is over when one side is left standing. In free-for-all each
+	// fighter is their own side, so this is the same "last one alive" rule
+	// it has always been.
 	room.mu.RLock()
-	for _, player := range room.Players {
-		if player.IsAlive {
-			aliveCount++
-			lastAlive = player
-		}
-	}
+	aliveTeams, lastAlive := room.aliveTeamsLocked()
 	room.mu.RUnlock()
 
-	// Check for match end (only 1 or 0 players alive)
-	if aliveCount <= 1 {
+	if aliveTeams <= 1 {
 		handleMatchEnd(room, lastAlive)
 	}
 }
@@ -250,6 +276,25 @@ func handleMatchEnd(room *Room, winner *Player) {
 	if winner != nil {
 		winnerData["winnerId"] = winner.ID
 		winnerData["winnerName"] = winner.Name
+
+		// In team play the survivor is only a representative of the side that
+		// won, so name its team-mates too.
+		winnerData["winnerTeam"] = winner.Team
+		room.mu.RLock()
+		mates := make([]string, 0)
+		for _, player := range room.Players {
+			if player.Team == winner.Team {
+				mates = append(mates, player.Name)
+			}
+		}
+		teamed := room.TeamMode != TeamModeFFA && room.TeamMode != ""
+		room.mu.RUnlock()
+
+		if teamed && len(mates) > 1 {
+			sort.Strings(mates)
+			winnerData["winnerNames"] = mates
+		}
+
 		log.Printf("[Match] Match ended - Winner: %s", winner.Name)
 	} else {
 		winnerData["reason"] = "draw"

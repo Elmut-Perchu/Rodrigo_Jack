@@ -16,17 +16,24 @@ import (
 
 // Player represents a connected client
 type Player struct {
-	ID              string          `json:"id"`
-	Name            string          `json:"name"`
-	Conn            *websocket.Conn `json:"-"`
-	Room            *Room           `json:"-"`
-	IsReady         bool            `json:"isReady"`
-	GameReady       bool            `json:"gameReady"` // True when game client loaded and ready for game loop
-	IsHost          bool            `json:"isHost"`
-	SendChan        chan []byte     `json:"-"`
-	LastMessageTime time.Time       `json:"-"`
-	MessageCount    int             `json:"-"`
-	closeChan       chan bool       // For stopping goroutines
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Conn      *websocket.Conn `json:"-"`
+	Room      *Room           `json:"-"`
+	IsReady   bool            `json:"isReady"`
+	GameReady bool            `json:"gameReady"` // True when game client loaded and ready for game loop
+	IsHost    bool            `json:"isHost"`
+	// A bot is a fighter with no socket, run by another client (see bots.go).
+	IsBot        bool   `json:"isBot"`
+	BotLevel     string `json:"botLevel"`
+	ControllerID string `json:"-"` // Whose client moves it
+	// 0 never occurs once a room has assigned sides; in free-for-all each
+	// fighter simply gets a team of their own.
+	Team            int         `json:"team"`
+	SendChan        chan []byte `json:"-"`
+	LastMessageTime time.Time   `json:"-"`
+	MessageCount    int         `json:"-"`
+	closeChan       chan bool   // For stopping goroutines
 	// Game state
 	X           float64 `json:"x"`
 	Y           float64 `json:"y"`
@@ -37,7 +44,14 @@ type Player struct {
 	Health      int     `json:"health"`
 	IsAlive     bool    `json:"isAlive"`
 	// Validation tracking
-	LastStateUpdate time.Time `json:"-"` // For rate limiting and movement validation
+	LastStateUpdate time.Time `json:"-"`      // For rate limiting and movement validation
+	Quiver          int       `json:"quiver"` // Arrows carried (see combat_vs.go)
+	// Session / reconnection tracking (see session.go)
+	SessionID  string      `json:"-"` // Persistent across reconnections
+	Connected  bool        `json:"connected"`
+	graceTimer *time.Timer // Eviction timer while offline
+	sendMu     sync.Mutex  // Guards sendClosed / SendChan
+	sendClosed bool        // True once SendChan has been closed
 	// Test mode fields
 	testRoomCode string
 	testPlayerId string
@@ -66,6 +80,8 @@ func NewPlayer(conn *websocket.Conn) *Player {
 		LastMessageTime: time.Now(),
 		MessageCount:    0,
 		LastStateUpdate: time.Now(),
+		Connected:       true,
+		Quiver:          StartingArrows,
 	}
 
 	log.Printf("[Player] New player created: %s", player.ID)
@@ -154,6 +170,32 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handlePlayerState(msg)
 	case "player_attack":
 		p.handlePlayerAttack(msg)
+	// Arrow lifecycle (see combat_vs.go)
+	case "arrow_spawn":
+		p.handleArrowSpawn(msg)
+	case "arrow_stuck":
+		p.handleArrowStuck(msg)
+	case "arrow_pickup":
+		p.handleArrowPickup(msg)
+	case "lobby_add_bot":
+		p.handleAddBot(msg)
+	case "lobby_remove_bot":
+		p.handleRemoveBot(msg)
+	case "lobby_set_teams":
+		p.handleSetTeams(msg)
+	case "lobby_set_player_team":
+		p.handleSetPlayerTeam(msg)
+	case "bot_state":
+		p.handleBotState(msg)
+	case "arrow_deflect":
+		p.handleArrowDeflect(msg)
+	// Spirits (see spectre.go)
+	case "spectre_spawn":
+		p.handleSpectreSpawn(msg)
+	case "spectre_end":
+		p.handleSpectreEnd(msg)
+	case "arrow_hit":
+		p.handleArrowHit(msg)
 	case "ping":
 		// Send pong with timestamp
 		p.sendMessage("pong", map[string]interface{}{
@@ -202,7 +244,41 @@ func (p *Player) handleLobbyJoin(msg *Message) {
 
 	p.Name = html.EscapeString(playerName)
 
-	log.Printf("[Player] %s attempting to join room: %s (name: %s)", p.ID, roomCode, p.Name)
+	// Persistent session id lets a player reclaim its slot after the lobby ->
+	// arena navigation drops the WebSocket (see session.go).
+	sessionID, _ := msg.Data["sessionId"].(string)
+
+	log.Printf("[Player] %s attempting to join room: %s (name: %s, session: %s)", p.ID, roomCode, p.Name, sessionID)
+
+	// Reconnection path: adopt the slot we already own in this room.
+	if sessionID != "" {
+		if existing := roomManager.GetRoom(roomCode); existing != nil {
+			if existing.TryReconnect(p, sessionID) {
+				p.sendMessage("lobby_joined", map[string]interface{}{
+					"roomCode":    roomCode,
+					"playerId":    p.ID,
+					"playerName":  p.Name,
+					"isHost":      p.IsHost,
+					"playerCount": len(existing.Players),
+					"reconnected": true,
+					"gameActive":  existing.IsGameActive,
+				})
+				existing.sendRoomState(p)
+				existing.Broadcast("player_reconnected", map[string]interface{}{
+					"playerId":   p.ID,
+					"playerName": p.Name,
+				}, p)
+				log.Printf("[Player] %s reclaimed its slot in room %s", p.Name, roomCode)
+
+				// The player that just came back may be the last one the match
+				// was waiting on, so re-evaluate whether the loop can start.
+				existing.checkGameReady()
+				return
+			}
+		}
+	}
+
+	p.SessionID = sessionID
 
 	// Join or create room
 	room := roomManager.JoinRoom(roomCode, p)
@@ -278,6 +354,12 @@ func (p *Player) handleGameReady(msg *Message) {
 	p.GameReady = true
 	log.Printf("[GAME_READY] Player %s marked as GameReady", p.Name)
 
+	// Tell the arriving client which arrows are already lying around, so a
+	// reconnecting player can still see (and collect) them, and how many it
+	// is actually carrying (a page reload must not refill the quiver).
+	p.Room.sendArrowRegistry(p)
+	p.sendQuiver()
+
 	// Check if ALL players are game-ready, if so start the game loop
 	p.Room.checkGameReady()
 	log.Printf("[GAME_READY] ========== END ==========")
@@ -335,6 +417,14 @@ func (p *Player) handleChatMessage(msg *Message) {
 }
 
 // handlePlayerState handles player position/state updates with server-side validation
+// applyStateUpdate runs the ordinary player-state path.
+//
+// Bots go through it unchanged, anti-cheat included: a host is trusted with
+// its bots' movement exactly as much as with its own.
+func (p *Player) applyStateUpdate(msg *Message) {
+	p.handlePlayerState(msg)
+}
+
 func (p *Player) handlePlayerState(msg *Message) {
 	// CRITICAL DEBUG: Log every call to understand why positions don't update
 	log.Printf("🎮 [handlePlayerState] Called for player %s (%s)", p.ID, p.Name)
@@ -457,8 +547,15 @@ func (p *Player) handlePlayerAttack(msg *Message) {
 		return
 	}
 
-	if !p.IsAlive {
-		log.Printf("[Combat] Dead player %s attempted to attack", p.Name)
+	// A host reports its bots' blows from its own connection, naming them in
+	// asPlayerId. Anything it does not control falls back to itself.
+	actor := p.actor(msg)
+	if actor == nil {
+		return
+	}
+
+	if !actor.IsAlive {
+		log.Printf("[Combat] Dead player %s attempted to attack", actor.Name)
 		return
 	}
 
@@ -468,20 +565,31 @@ func (p *Player) handlePlayerAttack(msg *Message) {
 	y, yOk := msg.Data["y"].(float64)
 	direction, dirOk := msg.Data["direction"].(string)
 	facingRight, facingOk := msg.Data["facingRight"].(bool)
+	swing, _ := msg.Data["swing"].(string)
 
 	if !typeOk || !xOk || !yOk || !dirOk || !facingOk {
-		log.Printf("[Combat] Invalid attack data from %s", p.Name)
+		log.Printf("[Combat] Invalid attack data from %s", actor.Name)
 		return
 	}
 
 	// Create attack data
 	attackData := AttackData{
-		AttackerID:  p.ID,
+		AttackerID:  actor.ID,
 		AttackType:  AttackType(attackType),
 		X:           x,
 		Y:           y,
 		Direction:   direction,
 		FacingRight: facingRight,
+		Swing:       swing,
+	}
+
+	// A sword blow is shown at once but lands only after the parry window,
+	// so the opponent can answer it with their own blade (see parry.go).
+	// Ranged attacks resolve immediately - there is nothing to parry.
+	if attackData.AttackType == AttackMelee {
+		broadcastAttack(p.Room, attackData)
+		p.Room.registerSwing(actor, attackData)
+		return
 	}
 
 	// Process attack with server authority
@@ -505,7 +613,14 @@ func isDroppableMessage(msgType string) bool {
 
 // sendMessage sends a message to the player with improved overflow handling
 func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
-	log.Printf("[SEND_MSG] Sending %s to player %s (%s)", msgType, p.ID, p.Name)
+	// A player kept alive during its reconnection grace period has no socket
+	// left: writing to SendChan here would panic on a closed channel.
+	p.sendMu.Lock()
+	closed := p.sendClosed
+	p.sendMu.Unlock()
+	if closed {
+		return
+	}
 
 	msg := Message{
 		Type:      msgType,
@@ -595,16 +710,22 @@ func (p *Player) Close() {
 		handleTestLeave(p)
 	}
 
-	// Leave room if in one
+	// Stop accepting writes before anything else, so concurrent broadcasts
+	// cannot race us onto a closed channel.
+	alreadyClosed := p.markSendClosed()
+	if alreadyClosed {
+		log.Printf("🔌 [Player.Close] Already closed for %s - nothing to do", p.Name)
+		return
+	}
+
+	// Leave room if in one. The slot is held for RECONNECT_GRACE so that
+	// navigating from the lobby to the arena does not destroy the match.
 	if p.Room != nil {
-		log.Printf("🔌 [Player.Close] Player %s is in room %s, calling RemovePlayer", p.Name, p.Room.Code)
-		p.Room.RemovePlayer(p)
+		log.Printf("🔌 [Player.Close] Player %s is in room %s, holding slot for reconnection", p.Name, p.Room.Code)
+		p.Room.HandleDisconnect(p)
 	} else {
 		log.Printf("🔌 [Player.Close] Player %s has no room", p.Name)
 	}
-
-	// Unregister from global player map
-	unregisterPlayer(p)
 
 	// Signal goroutines to stop
 	if p.closeChan != nil {

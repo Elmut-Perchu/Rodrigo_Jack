@@ -2,22 +2,27 @@ package main
 
 import (
 	"log"
+	"sort"
 	"sync"
 	"time"
 )
 
 // Room represents a game lobby/room
 type Room struct {
-	Code               string             `json:"code"`
-	Players            map[string]*Player `json:"players"`
-	MaxPlayers         int                `json:"maxPlayers"`
-	Host               *Player            `json:"-"`
-	IsGameActive       bool               `json:"isGameActive"`
-	WaitTimer          *time.Timer        `json:"-"`
-	CountdownTimer     *time.Timer        `json:"-"`
-	CountdownActive    bool               `json:"countdownActive"`
-	CountdownRemaining int                `json:"countdownRemaining"`
-	countdownCancel    chan struct{}      // Channel to cancel countdown goroutine
+	Code               string                   `json:"code"`
+	Players            map[string]*Player       `json:"players"`
+	MaxPlayers         int                      `json:"maxPlayers"`
+	Host               *Player                  `json:"-"`
+	IsGameActive       bool                     `json:"isGameActive"`
+	WaitTimer          *time.Timer              `json:"-"`
+	CountdownTimer     *time.Timer              `json:"-"`
+	CountdownActive    bool                     `json:"countdownActive"`
+	CountdownRemaining int                      `json:"countdownRemaining"`
+	TeamMode           string                   `json:"teamMode"` // ffa | 2v2 | 3v1 (see bots.go)
+	countdownCancel    chan struct{}            // Channel to cancel countdown goroutine
+	Arrows             map[string]*ArenaArrow   `json:"-"` // Arrows lying in the arena (see combat_vs.go)
+	Spectres           map[string]string        `json:"-"` // Spirit id -> caster id (see spectre.go)
+	pendingSwings      map[string]*PendingSwing // Sword blows inside their parry window (see parry.go)
 	// Game loop fields
 	currentTick  uint64        // Server tick counter
 	stopGameLoop chan struct{} // Channel to stop game loop
@@ -86,12 +91,16 @@ func (rm *RoomManager) RemoveRoom(code string) {
 // NewRoom creates a new room
 func NewRoom(code string) *Room {
 	return &Room{
-		Code:              code,
-		Players:           make(map[string]*Player),
-		MaxPlayers:        4,
-		IsGameActive:      false,
-		CountdownActive:   false,
+		Code:               code,
+		Players:            make(map[string]*Player),
+		Arrows:             make(map[string]*ArenaArrow),
+		Spectres:           make(map[string]string),
+		pendingSwings:      make(map[string]*PendingSwing),
+		MaxPlayers:         4,
+		IsGameActive:       false,
+		CountdownActive:    false,
 		CountdownRemaining: 0,
+		TeamMode:           TeamModeFFA,
 	}
 }
 
@@ -101,58 +110,12 @@ func (r *Room) AddPlayer(player *Player) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// CRITICAL FIX: Check if player with same name already exists (reconnection)
-	// This handles page navigation (lobby → game) where WebSocket disconnects/reconnects
-	for existingID, existingPlayer := range r.Players {
-		if existingPlayer.Name == player.Name {
-			log.Printf("🔄 [Room] Player %s reconnecting, reusing ID %s", player.Name, existingID)
-
-			// Reuse existing ID instead of creating new one
-			player.ID = existingID
-			player.IsHost = existingPlayer.IsHost
-			player.IsReady = existingPlayer.IsReady
-			player.GameReady = existingPlayer.GameReady
-
-			// Preserve game state (position, health, etc.)
-			player.X = existingPlayer.X
-			player.Y = existingPlayer.Y
-			player.VX = existingPlayer.VX
-			player.VY = existingPlayer.VY
-			player.Health = existingPlayer.Health
-			player.IsAlive = existingPlayer.IsAlive
-
-			// Close old connection (if still open)
-			go existingPlayer.Conn.Close()
-
-			// Replace with new connection
-			r.Players[existingID] = player
-			player.Room = r
-
-			log.Printf("✅ [Room] Player %s reconnected with preserved state (x=%.1f, y=%.1f, health=%d)",
-				player.Name, player.X, player.Y, player.Health)
-
-			// Broadcast player_reconnected (not player_joined)
-			r.broadcastLocked("player_reconnected", map[string]interface{}{
-				"playerId":    player.ID,
-				"playerName":  player.Name,
-				"isHost":      player.IsHost,
-				"playerCount": len(r.Players),
-			}, nil)
-
-			// Send current room state to reconnected player
-			r.sendRoomStateLocked(player)
-
-			// Release lock (defer will NOT unlock because we return)
-			r.mu.Unlock()
-
-			// CRITICAL FIX: Check if all players are now game-ready!
-			// If this was the last player to reconnect and everyone has GameReady=true,
-			// we need to start the game loop
-			log.Printf("🔍 [Room] Checking if game should start after %s reconnection...", player.Name)
-			r.checkGameReady()
-			return
-		}
-	}
+	// Reconnection is handled earlier, in handleLobbyJoin, keyed on the
+	// client's session id (see session.go). Matching on display name was
+	// tried here before: it let two players sharing a nickname steal each
+	// other's slot, and it double-unlocked r.mu (an explicit Unlock ahead of
+	// a return that still ran the deferred Unlock), which crashed the server
+	// with "Unlock of unlocked RWMutex".
 
 	// NEW PLAYER (not reconnection) - use code below
 
@@ -165,6 +128,7 @@ func (r *Room) AddPlayer(player *Player) {
 
 	r.Players[player.ID] = player
 	player.Room = r
+	r.assignTeamsLocked() // Sides shown in the lobby from the moment they join
 	log.Printf("[Room] Player %s joined room %s (count: %d/%d)", player.ID, r.Code, len(r.Players), r.MaxPlayers)
 
 	// Broadcast player_joined to all other players
@@ -184,8 +148,16 @@ func (r *Room) AddPlayer(player *Player) {
 		"isSystem":   true,
 	}, nil)
 
-	// Send current room state to new player
-	r.sendRoomStateLocked(player)
+	// Send the roster to EVERYONE, not just the arrival.
+	//
+	// The clients derive a fighter's slot - and therefore its spawn point and
+	// the colours it wears - from a sort over the roster, so every client has
+	// to be working from the same roster. Told only that somebody joined, an
+	// existing client had to guess a slot, and two players could end up seeing
+	// the same fighter in different colours.
+	for _, p := range r.Players {
+		r.sendRoomStateLocked(p)
+	}
 
 	// Start wait timer if this is the second player
 	if len(r.Players) == 2 {
@@ -201,6 +173,7 @@ func (r *Room) RemovePlayer(player *Player) {
 	defer r.mu.Unlock()
 
 	delete(r.Players, player.ID)
+	r.assignTeamsLocked()
 	log.Printf("🚪 [RemovePlayer] Player %s removed, remaining count: %d/%d", player.ID, len(r.Players), r.MaxPlayers)
 
 	// If room is empty, cleanup and remove
@@ -236,20 +209,47 @@ func (r *Room) RemovePlayer(player *Player) {
 	}, nil)
 }
 
-// reassignHost assigns a new host from remaining players
-func (r *Room) reassignHost() {
-	// Pick first available player as new host
-	for _, p := range r.Players {
-		p.IsHost = true
-		r.Host = p
-		log.Printf("[Room] %s is now host of room %s", p.ID, r.Code)
+/*
+reassignHost picks a new host from the remaining players.
 
-		// Notify all players of new host
-		r.broadcastLocked("host_changed", map[string]interface{}{
-			"playerId": p.ID,
-		}, nil)
-		break
+Only a human can take it: a bot has no client of its own, so making one host
+would leave the room with nobody able to move it - or to run any of the other
+bots, which are handed over at the same time.
+*/
+func (r *Room) reassignHost() {
+	oldHostID := ""
+	if r.Host != nil {
+		oldHostID = r.Host.ID
 	}
+
+	// Deterministic pick, so every client agrees on who took over.
+	ids := make([]string, 0, len(r.Players))
+	for id, p := range r.Players {
+		if !p.IsBot {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+
+	if len(ids) == 0 {
+		// Only machines left, and nobody to run them.
+		for _, id := range r.dropBotsLocked() {
+			r.broadcastLocked("player_left", map[string]interface{}{"playerId": id}, nil)
+		}
+		r.Host = nil
+		return
+	}
+
+	newHost := r.Players[ids[0]]
+	newHost.IsHost = true
+	r.Host = newHost
+	log.Printf("[Room] %s is now host of room %s", newHost.ID, r.Code)
+
+	r.adoptBotsLocked(oldHostID, newHost)
+
+	r.broadcastLocked("host_changed", map[string]interface{}{
+		"playerId": newHost.ID,
+	}, nil)
 }
 
 // Broadcast sends a message to all players in the room
@@ -294,6 +294,12 @@ func (r *Room) sendRoomStateLocked(player *Player) {
 			"playerName": p.Name,
 			"isHost":     p.IsHost,
 			"isReady":    p.IsReady,
+			"isBot":      p.IsBot,
+			"botLevel":   p.BotLevel,
+			// Whose client runs it. That client simulates the bot for real;
+			// everyone else just watches an ordinary opponent.
+			"controllerId": p.ControllerID,
+			"team":         p.Team,
 		})
 	}
 
@@ -302,7 +308,18 @@ func (r *Room) sendRoomStateLocked(player *Player) {
 		"players":     playerList,
 		"playerCount": len(r.Players),
 		"maxPlayers":  r.MaxPlayers,
+		"teamMode":    r.TeamMode,
 	})
+}
+
+// BroadcastRoomState sends the roster to everyone, after it changes.
+func (r *Room) BroadcastRoomState() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, player := range r.Players {
+		r.sendRoomStateLocked(player)
+	}
 }
 
 // canStartGameLocked checks if the game can start (assumes lock already held)
@@ -617,24 +634,40 @@ func (r *Room) checkGameReady() {
 		return
 	}
 
-	// Count how many players are game-ready
+	// Count how many players are game-ready.
+	// Only connected players count: a slot still held for a player inside its
+	// reconnection grace period must not block the match from starting.
 	readyCount := 0
+	connectedCount := 0
 	for _, player := range r.Players {
-		log.Printf("[CHECK_GAME_READY] Player %s (%s) - GameReady: %v", player.ID, player.Name, player.GameReady)
+		log.Printf("[CHECK_GAME_READY] Player %s (%s) - GameReady: %v, Connected: %v", player.ID, player.Name, player.GameReady, player.Connected)
+		if !player.Connected {
+			continue
+		}
+		connectedCount++
 		if player.GameReady {
 			readyCount++
 		}
 	}
 
-	log.Printf("[CHECK_GAME_READY] %d/%d players game-ready", readyCount, len(r.Players))
+	log.Printf("[CHECK_GAME_READY] %d/%d connected players game-ready", readyCount, connectedCount)
 
-	// If ALL players are game-ready, start the game loop!
-	if readyCount == len(r.Players) && len(r.Players) >= 2 {
+	// If ALL connected players are game-ready, start the game loop!
+	if readyCount == connectedCount && connectedCount >= 2 {
 		log.Printf("[CHECK_GAME_READY] ✅ ALL PLAYERS READY! Starting countdown...")
 
 		// CRITICAL: Initialize player spawn positions BEFORE countdown!
 		// Otherwise all players will be at (0, 0)
 		r.initializePlayerSpawnPositions()
+
+		// Arrows from a previous match must not litter the new one, and
+		// everyone starts the round with a full starting quiver.
+		r.clearArrowsLocked()
+		r.clearSwingsLocked()
+		r.clearSpectresLocked()
+		for _, player := range r.Players {
+			player.Quiver = StartingArrows
+		}
 
 		// CRITICAL: Set IsGameActive = true BEFORE countdown!
 		// Otherwise game loop will immediately stop when it checks IsGameActive
@@ -655,30 +688,83 @@ func (r *Room) checkGameReady() {
 // initializePlayerSpawnPositions sets initial spawn positions for all players
 // Assumes lock is already held by caller (checkGameReady)
 func (r *Room) initializePlayerSpawnPositions() {
-	// Spawn points positioned in visible corners of arena
-	// Map dimensions: 1536x896 pixels
-	// Spawn points at 20% and 80% of dimensions for good spacing
-	spawnPoints := []struct {
+	// Spawn points taken from assets/maps/pvp_arena_compact.json "spawnpoints"
+	// (tile coordinates x 64). Map is 24x14 tiles of 64px = 1536x896.
+	//
+	// The previous hardcoded corners (300/1200 x 200/650) all landed INSIDE
+	// solid platform tiles on rows 3 and 10, so players spawned stuck in
+	// geometry and collision resolution shoved them around forever.
+	type spawn struct {
 		X float64
 		Y float64
-	}{
-		{X: 300, Y: 200},   // Top-left (20% from edges)
-		{X: 1200, Y: 200},  // Top-right (80% horizontal)
-		{X: 300, Y: 650},   // Bottom-left (75% vertical)
-		{X: 1200, Y: 650},  // Bottom-right
 	}
+
+	// Free-for-all: one corner each.
+	spawnPoints := []spawn{
+		{X: 2 * 64, Y: 2 * 64},   // P1 top-left     (128, 128)
+		{X: 21 * 64, Y: 2 * 64},  // P2 top-right    (1344, 128)
+		{X: 2 * 64, Y: 11 * 64},  // P3 bottom-left  (128, 704)
+		{X: 21 * 64, Y: 11 * 64}, // P4 bottom-right (1344, 704)
+	}
+
+	// Team play puts each side on its own half, so a 2v2 really is two on the
+	// left against two on the right rather than four scattered corners. The
+	// third entry of each column covers 3v1, where one side fields three.
+	leftSpawns := []spawn{
+		{X: 2 * 64, Y: 2 * 64},  // (128, 128)
+		{X: 2 * 64, Y: 11 * 64}, // (128, 704)
+		{X: 2 * 64, Y: 6 * 64},  // (128, 384) - drops onto the row-8 ledge
+	}
+	rightSpawns := []spawn{
+		{X: 21 * 64, Y: 2 * 64},  // (1344, 128)
+		{X: 21 * 64, Y: 11 * 64}, // (1344, 704)
+		{X: 21 * 64, Y: 6 * 64},  // (1344, 384)
+	}
+
+	// Settle sides before anything reads them. A fighter left on team 0 would
+	// count as sharing a side with every other team-0 fighter, which in
+	// free-for-all made aliveTeamsLocked() see a single team from the start
+	// and end the match on the first death.
+	r.assignTeamsLocked()
 
 	log.Printf("[SPAWN_INIT] ========== START ==========")
 	log.Printf("[SPAWN_INIT] Initializing spawn positions for %d players", len(r.Players))
 
+	// Assign spawns in sorted player-id order. Ranging over r.Players directly
+	// uses Go's randomised map order, so the server and the clients (which
+	// order by playerId) disagreed on who owns which corner: every client
+	// predicted the wrong spawn and its first state update was rejected as a
+	// 1216px teleport. Sorting makes the mapping identical everywhere, which
+	// also keeps player colours consistent across clients.
+	ids := make([]string, 0, len(r.Players))
+	for id := range r.Players {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	teamed := r.TeamMode != TeamModeFFA && r.TeamMode != ""
+	usedLeft, usedRight := 0, 0
+
 	playerIndex := 0
-	for _, player := range r.Players {
-		// Assign spawn point (cycle through available points if more than 4 players)
-		spawn := spawnPoints[playerIndex%len(spawnPoints)]
+	for _, id := range ids {
+		player := r.Players[id]
+
+		// Free-for-all keeps the corner-per-player layout; team play draws
+		// from the side that fighter belongs to.
+		point := spawnPoints[playerIndex%len(spawnPoints)]
+		if teamed {
+			if player.Team == 1 {
+				point = leftSpawns[usedLeft%len(leftSpawns)]
+				usedLeft++
+			} else {
+				point = rightSpawns[usedRight%len(rightSpawns)]
+				usedRight++
+			}
+		}
 
 		// Set player position
-		player.X = spawn.X
-		player.Y = spawn.Y
+		player.X = point.X
+		player.Y = point.Y
 		player.VX = 0
 		player.VY = 0
 
