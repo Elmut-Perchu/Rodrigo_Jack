@@ -9,17 +9,11 @@ import { Entity } from '../core/entities/entity.js';
 import { CircleHitbox } from '../core/components/circle_hitbox_component.js';
 import { Visual } from '../core/components/visual_component.js';
 import { PlayerAnimation } from '../core/components/animation_component.js';
-import { Input } from '../core/components/input_component.js'; // NEW IMPORT for keyboard controls
-
-/**
- * Player color palette (P1=red, P2=blue, P3=green, P4=yellow)
- */
-const PLAYER_COLORS = [
-    { primary: '#FF4444', secondary: '#CC0000', name: 'Red' },    // P1
-    { primary: '#4444FF', secondary: '#0000CC', name: 'Blue' },   // P2
-    { primary: '#44FF44', secondary: '#00CC00', name: 'Green' },  // P3
-    { primary: '#FFFF44', secondary: '#CCCC00', name: 'Yellow' }  // P4
-];
+import { VSControls } from '../core/components/vs_input_component.js';
+import { Interpolation } from '../core/components/interpolation_component.js';
+import { BowState } from '../core/components/bow_state_component.js';
+import { SpectreState } from '../core/components/spectre_state_component.js';
+import { paletteFor } from '../constants/vs_palette.js';
 
 /**
  * Map network animation names to PlayerAnimation state names
@@ -49,6 +43,11 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
         playerName: playerData.playerName || 'Player',
         playerIndex: playerIndex,
         isLocal: false,
+        // Whether this fighter's physics runs on this machine. False for a
+        // networked opponent, whose position arrives already computed; true
+        // for the local player and for bots (see create/bot_create.js).
+        simulated: false,
+        isBot: false,
         lastUpdateTime: Date.now()
     });
 
@@ -65,11 +64,16 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
     });
 
     // Visual component (required for rendering)
-    const color = PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
+    const color = paletteFor(playerIndex);
     entity.addComponent('visual', new Visual(null, 110, 110));
 
     // Animation component - FIXED: Use PlayerAnimation class
-    const animationComponent = new PlayerAnimation();
+    //
+    // Each slot gets its own recoloured copy of the sheet, so the four
+    // fighters are told apart by what they are wearing rather than by a name
+    // tag. The sheets are palette swaps of one another: same grid, same
+    // frames, so nothing else here changes.
+    const animationComponent = new PlayerAnimation(color.sheet);
     entity.addComponent('animation', animationComponent);
 
     // Set initial animation state
@@ -92,7 +96,11 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
         movable: true,
         speed: 450,
         solid: false,
-        jumpStrength: 425,
+        // 540 against VSGravity's 1500 gives roughly 97px of lift, and about
+        // 194px using the second jump - one arena tile is 64px, so a single
+        // jump now clears a platform with room to spare and a double reaches
+        // three. Adventure keeps its own 425 (create/player_create.js).
+        jumpStrength: 540,
         applyGravity: true,
         isOnGround: false,
         isCollided: false,
@@ -118,14 +126,14 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
     });
 
     // Interpolation component for smooth movement
-    entity.addComponent('interpolation', {
-        previousX: playerData.x || 0,
-        previousY: playerData.y || 0,
-        targetX: playerData.x || 0,
-        targetY: playerData.y || 0,
-        alpha: 0, // Interpolation progress (0-1)
-        enabled: true
+    const interpComponent = new Interpolation();
+    // Add initial state
+    interpComponent.addState({
+        x: playerData.x || 0,
+        y: playerData.y || 0,
+        timestamp: Date.now()
     });
+    entity.addComponent('interpolation', interpComponent);
 
     // Prediction component for lag compensation
     entity.addComponent('prediction', {
@@ -134,6 +142,17 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
         errorX: 0,
         errorY: 0,
         correctionSpeed: 0.1 // Smooth error correction
+    });
+
+    // Identity colour, for the HUD and anything else that needs to point at
+    // this fighter.
+    entity.addComponent('palette', {
+        index: playerIndex,
+        id: color.id,
+        name: color.name,
+        primary: color.primary,
+        accent: color.accent,
+        glow: color.glow
     });
 
     console.log(`[RemotePlayer] Created ${playerData.playerName} (${color.name}, index: ${playerIndex})`);
@@ -203,7 +222,7 @@ export function updateRemotePlayerState(entity, stateData) {
  * @returns {Object} - Color object
  */
 export function getPlayerColor(index) {
-    return PLAYER_COLORS[index % PLAYER_COLORS.length];
+    return paletteFor(index);
 }
 
 /**
@@ -219,10 +238,22 @@ export function createLocalPlayer(playerData, playerIndex = 0) {
     const networkPlayer = entity.getComponent('networkPlayer');
     if (networkPlayer) {
         networkPlayer.isLocal = true;
+        networkPlayer.simulated = true;
     }
 
-    // Add input component for local control - MUST use Input class for keyboard event listeners
-    entity.addComponent('input', new Input());
+    // Arena bindings: the direction keys aim, space jumps, W/X/C are the three
+    // weapons. Adventure's Input component keeps its own scheme (see
+    // core/components/vs_input_component.js).
+    entity.addComponent('input', new VSControls());
+
+    // Quiver: arrows are consumables that must be picked back up (see VSBow /
+    // VSArrow). Only the local player needs one - remote quivers are their
+    // owner's business.
+    entity.addComponent('bow_state', new BowState());
+
+    // Spectre gauge: filled by channelling, spent to send a spirit after an
+    // opponent (see VSSpectre).
+    entity.addComponent('spectre_state', new SpectreState());
 
     // Disable interpolation for local player (uses client-side prediction)
     const interpolation = entity.getComponent('interpolation');

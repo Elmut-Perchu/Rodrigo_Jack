@@ -5,6 +5,32 @@
  * Phase 3 - Real WebSocket implementation
  */
 
+/**
+ * Per-tab session id identifying this player across the lobby -> arena
+ * navigation, which closes the WebSocket.
+ *
+ * sessionStorage is deliberate: it survives navigation inside a tab but is
+ * NOT shared between tabs. localStorage would hand every tab the same id, so
+ * opening a second tab to test a 2-player match would make the newcomer
+ * reclaim the first player's slot instead of joining as a second player.
+ */
+export function getVsSessionId() {
+    const KEY = 'rodrigoJackVsSession';
+    let id = null;
+    try {
+        id = sessionStorage.getItem(KEY);
+    } catch (e) {
+        // Storage unavailable (private mode) - fall through to a volatile id
+    }
+    if (!id) {
+        id = 'sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        try {
+            sessionStorage.setItem(KEY, id);
+        } catch (e) { /* non fatal */ }
+    }
+    return id;
+}
+
 export class WebSocketClient {
     constructor() {
         this.ws = null;
@@ -55,9 +81,13 @@ export class WebSocketClient {
                     }
 
                     // Send lobby_join message (immediate, not batched)
+                    // sessionId lets the arena page reclaim this exact slot
+                    // after the lobby -> vs_game.html navigation closes this
+                    // socket. It MUST match the id game_vs_simple.js reads.
                     this.send('lobby_join', {
                         roomCode: this.roomCode,
-                        playerName: this.playerName
+                        playerName: this.playerName,
+                        sessionId: getVsSessionId()
                     }, false); // Don't batch
 
                     resolve({ success: true });

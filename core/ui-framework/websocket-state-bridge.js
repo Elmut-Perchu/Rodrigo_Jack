@@ -40,9 +40,14 @@ export function createWebSocketBridge(frameworkState) {
         id: p.playerId,
         name: p.playerName,
         ready: p.isReady,
-        isHost: p.isHost
+        isHost: p.isHost,
+        // A slot filled by the computer, and which side it fights for.
+        isBot: !!p.isBot,
+        botLevel: p.botLevel || null,
+        team: p.team || 0
       }));
       frameworkState.hostId = data.players.find(p => p.isHost)?.playerId || null;
+      frameworkState.teamMode = data.teamMode || 'ffa';
     });
 
     // Player joined
@@ -52,8 +57,12 @@ export function createWebSocketBridge(frameworkState) {
         frameworkState.players.push({
           id: data.playerId,
           name: data.playerName,
-          ready: false,
-          isHost: data.isHost
+          // A machine never keeps anyone waiting.
+          ready: !!data.isBot,
+          isHost: data.isHost,
+          isBot: !!data.isBot,
+          botLevel: data.botLevel || null,
+          team: 0
         });
 
         // System message
@@ -198,6 +207,42 @@ export function createWebSocketBridge(frameworkState) {
       if (frameworkState.isHost) {
         wsClient.send('start_game', {});
       }
+    },
+
+    /**
+     * Fill a free slot with a computer opponent (host only).
+     */
+    addBot(level) {
+      if (!frameworkState.isHost) return;
+      wsClient.send('lobby_add_bot', { level: level || frameworkState.botLevelChoice || 'soldier' });
+    },
+
+    /** Take a computer opponent back out (host only). */
+    removeBot(playerId) {
+      if (!frameworkState.isHost) return;
+      wsClient.send('lobby_remove_bot', { playerId });
+    },
+
+    /** Pick which difficulty the next added opponent will be. */
+    chooseBotLevel(level) {
+      frameworkState.botLevelChoice = level;
+    },
+
+    /** Choose the team layout: ffa, 2v2 or 3v1 (host only). */
+    setTeams(mode) {
+      if (!frameworkState.isHost) return;
+      wsClient.send('lobby_set_teams', { mode });
+    },
+
+    /**
+     * Put one fighter on a side (host only).
+     *
+     * The free-form alternative to the presets: clicking a slot swaps it
+     * between the two sides, which covers splits the presets do not.
+     */
+    setPlayerTeam(playerId, team) {
+      if (!frameworkState.isHost) return;
+      wsClient.send('lobby_set_player_team', { playerId, team });
     },
 
     /**

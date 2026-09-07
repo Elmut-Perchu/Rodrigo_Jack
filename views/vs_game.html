@@ -32,6 +32,22 @@
             height: 100%;
         }
 
+        /* VS mode shows the whole arena at once (no follow camera), so the
+           world is a fixed 1536x896 stage - 24x14 tiles of 64px, matching
+           assets/maps/pvp_arena_compact.json - scaled down to fit the window.
+           Overrides the viewport-sized .game-world rule in style.css. */
+        .game-world {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 1536px;
+            height: 896px;
+            transform: translate(-50%, -50%) scale(var(--arena-scale, 1));
+            transform-origin: center center;
+            background-color: #0f1419;
+            outline: 2px solid #2c3e50;
+        }
+
         /* UI Overlay */
         .vs-ui-overlay {
             position: fixed;
@@ -56,7 +72,7 @@
             border: 2px solid #3498db;
             border-radius: 8px;
             padding: 15px;
-            min-width: 200px;
+            min-width: 170px;
             pointer-events: auto;
         }
 
@@ -110,10 +126,90 @@
             transition: width 0.3s ease;
         }
 
+        /* Spirit gauge. Slimmer than the health bar so the two are never
+           misread at a glance in the middle of a fight. */
+        .spirit-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #34495e;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 3px;
+        }
+
+        .spirit-fill {
+            height: 100%;
+            width: 0;
+            background-color: #6c5ce7;
+            transition: width 0.15s linear;
+        }
+
+        /* Full: a resource that does nothing until it is spent has to say so. */
+        .spirit-fill.ready {
+            background-color: #9b59b6;
+            box-shadow: 0 0 8px #9b59b6;
+            animation: spirit-pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes spirit-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
+
+        /* Controls legend */
+        .controls-hint {
+            position: fixed;
+            left: 20px;
+            bottom: 16px;
+            background-color: rgba(0, 0, 0, 0.65);
+            border: 1px solid #34495e;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 9px;
+            line-height: 1.9;
+            color: #95a5a6;
+            pointer-events: auto;
+            z-index: 1200;
+
+            /* It sits over the lower-left of the arena, which fighters walk
+               across, so it steps out of the way once it has been read.
+               Hovering brings it back for anyone who needs another look. */
+            opacity: 0.92;
+            transition: opacity 0.4s ease;
+            animation: hint-dim 1.2s ease-in 9s forwards;
+        }
+
+        @keyframes hint-dim {
+            to { opacity: 0.1; }
+        }
+
+        .controls-hint:hover {
+            animation: none;
+            opacity: 0.97;
+        }
+
+        .controls-hint b {
+            color: #ecf0f1;
+        }
+
+        .controls-hint .key {
+            display: inline-block;
+            min-width: 14px;
+            padding: 1px 5px;
+            margin-right: 6px;
+            border: 1px solid #7f8c8d;
+            border-radius: 3px;
+            color: #ecf0f1;
+        }
+
         /* Match Info */
+        /* Bottom centre, not top centre: with four fighters the HUD cards
+           spread across the whole width and the middle two ran straight under
+           a timer parked at the top. Nothing else competes for the bottom
+           centre - the controls legend sits in the corner. */
         .match-info {
             position: fixed;
-            top: 20px;
+            bottom: 16px;
             left: 50%;
             transform: translateX(-50%);
             background-color: rgba(0, 0, 0, 0.8);
@@ -146,12 +242,16 @@
             background-color: rgba(0, 0, 0, 0.9);
             display: none;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
+            /* The body cannot scroll - it holds a fixed-size arena - so an
+               overlay taller than the window has to scroll on its own. */
+            overflow-y: auto;
             z-index: 2000;
             pointer-events: auto;
         }
 
         .game-over-content {
+            margin: auto 0;
             background-color: #2c3e50;
             border: 4px solid #ecf0f1;
             border-radius: 10px;
@@ -217,6 +317,9 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            overflow-y: auto;
+            padding: 24px 0;
+            box-sizing: border-box;
             z-index: 3000;
         }
 
@@ -284,12 +387,21 @@
             <!-- Match Info -->
             <div class="match-info">
                 <div class="match-timer" id="match-timer">3:00</div>
-                <div class="players-alive" id="players-alive">4 Players Alive</div>
+                <div class="players-alive" id="players-alive">Connecting…</div>
             </div>
 
             <!-- Player HUD -->
             <div class="player-hud" id="player-hud">
                 <!-- Player cards will be dynamically generated -->
+            </div>
+
+            <!-- Three weapons and an aim: worth stating once on screen -->
+            <div class="controls-hint">
+                <div><span class="key">&#8592;&#8594;</span><b>ZQSD / arrows</b> move &amp; aim</div>
+                <div><span class="key">&#9251;</span><b>Space</b> jump &#183; twice for a double</div>
+                <div><span class="key">X</span><b>Sword</b> - keeps chaining while held</div>
+                <div><span class="key">W</span><b>Bow</b> - tap to snap, hold to draw</div>
+                <div><span class="key">C</span><b>Spirit</b> - hold to charge, press to send</div>
             </div>
         </div>
 
@@ -307,14 +419,25 @@
     </div>
 
     <script type="module">
-        import { GameVS } from '../game_vs.js';
+        import { GameVSSimple } from '../game_vs_simple.js';
 
-        // Parse URL parameters
+        // Parse URL parameters. The lobby only forwards ?room=CODE, so the
+        // nickname is recovered from the storage the lobby wrote it to.
         const urlParams = new URLSearchParams(window.location.search);
         const roomCode = urlParams.get('room') || 'TEST';
+        const playerName = urlParams.get('name')
+            || sessionStorage.getItem('vsPlayerName')
+            || 'Player';
 
-        console.log('[VS Game] Starting battle arena...');
-        console.log('[VS Game] Room:', roomCode);
+        // ?mode=bot starts an offline match against the computer: no lobby, no
+        // server, a local arbiter standing in for both (see VSLocalArbiter).
+        const isBotMatch = urlParams.get('mode') === 'bot';
+        const botLevel = urlParams.get('level')
+            || sessionStorage.getItem('vsBotLevel')
+            || 'soldier';
+
+        console.log('[VS Game] Starting battle arena (Simple Mode)...');
+        console.log(isBotMatch ? `[VS Game] Opponent: computer (${botLevel})` : `[VS Game] Room: ${roomCode}`);
 
         // Initialize VS game
         let gameInstance = null;
@@ -322,34 +445,72 @@
         async function initializeGame() {
             try {
                 // Create game instance
-                gameInstance = new GameVS('.container');
+                gameInstance = new GameVSSimple();
 
                 // 🔍 DEBUG: Expose to window for console debugging
                 window.game = gameInstance;
 
-                // Initialize VS mode
-                await gameInstance.initializeVSMode(roomCode, false); // isHost determined by server
+                // Initialize
+                await gameInstance.init();
+
+                if (isBotMatch) {
+                    gameInstance.startBotMatch({ levelId: botLevel, playerName });
+                } else {
+                    // Connect, reclaim our slot in the room the lobby put us in,
+                    // then tell the server we are loaded so it can start the loop.
+                    await gameInstance.connectToServer(roomCode, playerName);
+                    gameInstance.signalGameReady();
+                    gameInstance.startNetworkSync();
+                }
 
                 // Hide loading screen
                 document.getElementById('loading-screen').style.display = 'none';
 
                 console.log('[VS Game] Game initialized successfully');
+                console.log('[VS Game] Arrows or ZQSD to move and aim, Space to jump, X sword, W bow, C spirit');
 
             } catch (error) {
                 console.error('[VS Game] Failed to initialize:', error);
-                alert('Failed to initialize game. Returning to lobby...');
-                window.location.href = 'vs_lobby.html';
+
+                // Offline fallback so the arena stays playable solo when the
+                // server is unreachable, instead of showing a dead screen.
+                if (gameInstance && !gameInstance.localPlayer) {
+                    console.warn('[VS Game] Server unreachable - starting offline sandbox');
+                    gameInstance.localPlayerId = 'local-' + Date.now();
+                    gameInstance.createLocalPlayerEntity(0);
+                    gameInstance.spawnApplied = true;
+                    document.getElementById('loading-screen').style.display = 'none';
+                } else {
+                    alert('Failed to initialize game: ' + error.message);
+                }
             }
         }
 
-        // Game over handlers
-        document.getElementById('btn-lobby').addEventListener('click', () => {
-            window.location.href = 'vs_lobby.html';
+        // Game over handlers. A bot match has no lobby to go back to, so the
+        // same button offers a rematch instead.
+        const btnLobby = document.getElementById('btn-lobby');
+        if (isBotMatch) btnLobby.textContent = 'Rematch';
+
+        btnLobby.addEventListener('click', () => {
+            window.location.href = isBotMatch
+                ? `vs_game.html?mode=bot&level=${encodeURIComponent(botLevel)}`
+                : 'vs_lobby.html';
         });
 
         document.getElementById('btn-menu').addEventListener('click', () => {
-            window.location.href = '../index.html';
+            window.location.href = isBotMatch ? 'vs_menu.html' : '../index.html';
         });
+
+        // Scale the fixed-size arena so the whole battlefield stays visible
+        // whatever the window size. Only the presentation is scaled: physics
+        // and hitboxes keep working in unscaled arena coordinates.
+        const ARENA_W = 1536, ARENA_H = 896;
+        function fitArena() {
+            const scale = Math.min(window.innerWidth / ARENA_W, window.innerHeight / ARENA_H, 1);
+            document.documentElement.style.setProperty('--arena-scale', scale);
+        }
+        window.addEventListener('resize', fitArena);
+        fitArena();
 
         // Start initialization
         window.addEventListener('DOMContentLoaded', () => {

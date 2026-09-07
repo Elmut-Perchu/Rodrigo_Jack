@@ -1,47 +1,45 @@
 /**
  * GameVS - VS Mode Extension of Base Game
- * Extends game.js for multiplayer battle arena functionality
+ * REFACTORED: Uses simplified VSSyncManager instead of complex ECS networking
  *
- * Phase 3 Days 16-17 - CRITICAL FIX: WebSocket connection + player entities
+ * Architecture: VSSyncManager (sync) + VSRenderBridge (rendering)
+ * Based on working test_sync.js system
  */
 
 import { Game } from './game.js';
 import { WebSocketClient } from './core/network/websocket_client.js';
-import { createNetworkPlayerComponent } from './core/components/network_player.js';
+// Use existing ECS systems - NetworkSyncSystem handles network sync
 
 export class GameVS extends Game {
     constructor(container) {
         // Pass 'vs' mode to parent constructor to prevent Adventure menu creation
         super(container, 'vs');
 
-        // VS Mode specific properties (mode already set in parent)
-        // this.mode = 'vs'; // Already set by super()
+        // VS Mode properties
         this.roomCode = null;
         this.playerName = null;
-        this.players = new Map(); // Map of player entities by playerId
-        this.localPlayerId = null;
         this.isHost = false;
 
-        // Network properties
+        // Network client (WebSocket)
         this.networkClient = null;
-        this.lastNetworkUpdate = 0;
-        this.networkUpdateRate = 50; // 20 updates per second
-        this.pendingRoomState = null; // Store room_state if it arrives before lobby_joined
+        this.networkSyncSystem = null;
+
+        // Player management
+        this.players = new Map(); // Map<playerId, entity>
+        this.localPlayerId = null;
+        this.playersAlive = 0;
 
         // Match properties
         this.matchStarted = false;
         this.matchTimer = 0;
         this.matchDuration = 180000; // 3 minutes
-        this.playersAlive = 0;
-
-        // Initialization flags
-        this.playersReady = false;
 
         // Initialization timestamp for detailed logging
         this.initStartTime = performance.now();
 
-        this.logWithTimestamp('[GameVS] VS Mode game instance created');
-        this.logWithTimestamp(`[GameVS] Mode: ${this.mode}`);
+        console.log('🔴 [GameVS] VS Mode game instance created (REFACTORED)');
+        console.log(`🔴 [GameVS] Mode: ${this.mode}`);
+        console.log('🔴 [GameVS] Constructor complete - waiting for initializeVSMode()');
     }
 
     /**
@@ -82,7 +80,7 @@ export class GameVS extends Game {
     }
 
     /**
-     * Initialize VS mode game
+     * Initialize VS mode game (SIMPLIFIED)
      * @param {string} roomCode - Room identifier
      * @param {boolean} isHost - Whether this player is the host
      */
@@ -91,65 +89,71 @@ export class GameVS extends Game {
             this.roomCode = roomCode;
             this.isHost = isHost;
 
-            this.logWithTimestamp(`[GameVS] Initializing VS mode - Room: ${roomCode}, Host: ${isHost}`);
+            console.log(`🔴 [GameVS] Initializing VS mode - Room: ${roomCode}`);
+
+            // CRITICAL: Wait for parent's initAsync() to complete
+            // This ensures all systems (including RenderSystem) are added
+            // before we create player entities
+            if (this.initPromise) {
+                console.log('[GameVS] Waiting for base game initialization...');
+                await this.initPromise;
+                console.log('[GameVS] Base game initialization complete');
+
+                // Debug: List all systems
+                const systemNames = Array.from(this.systems).map(s => s.constructor.name);
+                console.log(`[GameVS] Systems loaded (${this.systems.size}):`, systemNames);
+
+                // Verify RenderSystem exists
+                const hasRender = systemNames.includes('Render');
+                console.log(`[GameVS] RenderSystem present: ${hasRender}`);
+            }
+
             this.updateLoadingStep('init', 'completed');
 
             // Get player name from sessionStorage
             this.playerName = sessionStorage.getItem('vsPlayerName') || 'Player';
             sessionStorage.removeItem('vsPlayerName');
 
-            this.logWithTimestamp(`[GameVS] Player name: ${this.playerName}`);
+            console.log(`[GameVS] Player: ${this.playerName}`);
 
-            // Disable Adventure-specific features
-            this.logWithTimestamp('[GameVS] Step 1: Disabling adventure features');
+            // Step 1: Disable Adventure features
             this.updateLoadingStep('adventure', 'in_progress');
             this.disableAdventureFeatures();
             this.updateLoadingStep('adventure', 'completed');
-            this.logWithTimestamp('[GameVS] Adventure features disabled');
+            console.log('[GameVS] Adventure features disabled');
 
-            // Load VS battle map FIRST (before WebSocket)
-            this.logWithTimestamp('[GameVS] Step 2: Loading VS map');
+            // Step 2: Load VS map
             this.updateLoadingStep('map', 'in_progress');
             await this.loadVSMap();
             this.updateLoadingStep('map', 'completed');
-            this.logWithTimestamp('[GameVS] VS map loaded');
+            console.log('[GameVS] VS map loaded');
 
-            // CRITICAL FIX: Create WebSocket client BEFORE adding systems
-            // This ensures networkClient exists when systems register handlers
-            this.logWithTimestamp('[GameVS] Step 3: Creating WebSocket client');
-            const { WebSocketClient } = await import('./core/network/websocket_client.js');
-            this.networkClient = new WebSocketClient();
-            this.logWithTimestamp('[GameVS] WebSocket client created');
-
-            // Add VS systems (handlers will be registered when systems are added)
-            this.logWithTimestamp('[GameVS] Step 4: Adding VS systems');
+            // Step 3: Create WebSocket client and add VS systems
             this.updateLoadingStep('systems', 'in_progress');
+            this.networkClient = new WebSocketClient();
             await this.addVSSystems();
             this.updateLoadingStep('systems', 'completed');
-            this.logWithTimestamp('[GameVS] VS systems added');
+            console.log('[GameVS] VS systems added');
 
-            // Connect to WebSocket server AFTER systems are ready
-            this.logWithTimestamp('[GameVS] Step 5: Connecting to server');
+            // Step 4: Connect to WebSocket server
             this.updateLoadingStep('server', 'in_progress');
             await this.connectToServer();
             this.updateLoadingStep('server', 'completed');
-            this.logWithTimestamp('[GameVS] Server connected');
+            console.log('[GameVS] Connected to server');
 
-            // Wait for all players to be created
-            this.logWithTimestamp('[GameVS] Step 6: Waiting for players');
+            // Step 5: Wait for initial player creation
             this.updateLoadingStep('players', 'in_progress');
-            await this.waitForPlayers();
+            await new Promise(resolve => setTimeout(resolve, 500));
             this.updateLoadingStep('players', 'completed');
-            this.logWithTimestamp('[GameVS] Players ready');
+            console.log('[GameVS] Players ready');
 
-            // Unpause game to start rendering and gameplay
+            // Unpause game to start rendering
+            console.log(`[GameVS] UNPAUSE: this.paused was ${this.paused}, setting to false`);
             this.paused = false;
-            this.logWithTimestamp('[GameVS] Game unpaused - match started!');
+            console.log(`[GameVS] UNPAUSE: this.paused is now ${this.paused}`);
+            console.log('[GameVS] Game started!');
         } catch (error) {
-            console.error('[GameVS] CRITICAL ERROR in initializeVSMode:', error);
-            console.error('[GameVS] Error name:', error?.name);
-            console.error('[GameVS] Error message:', error?.message);
-            console.error('[GameVS] Error stack:', error?.stack);
+            console.error('[GameVS] CRITICAL ERROR:', error);
 
             // Mark all steps as error
             ['adventure', 'map', 'server', 'systems', 'players'].forEach(step => {
@@ -425,12 +429,17 @@ export class GameVS extends Game {
         });
 
         console.log('[GameVS] Network handlers registered');
+
+        // Mark handlers as ready to process queued messages (lobby_joined, room_state)
+        this.networkClient.markHandlersReady();
+        console.log('[GameVS] Handlers marked ready');
     }
 
     /**
      * Handle room state - create all players
      */
     async handleRoomState(data) {
+        console.error('🔴🔴🔴 [GameVS] handleRoomState CALLED! 🔴🔴🔴');
         console.log('[GameVS] Creating players from room state...');
 
         // 🔍 DEBUG: Track duplicate spawns
@@ -540,15 +549,18 @@ export class GameVS extends Game {
      * Create local player (controllable)
      */
     async createLocalPlayer(playerData, playerIndex) {
+        console.error('🔴🔴🔴 [GameVS] createLocalPlayer CALLED! 🔴🔴🔴');
         console.log('[GameVS] Creating local player:', playerData.playerName);
 
         try {
             // Import local player factory
+            console.error('🔴 [GameVS] Importing createLocalPlayer...');
             const { createLocalPlayer } = await import('./create/remote_player_create.js');
+            console.error('🔴 [GameVS] Import successful');
 
             // Get spawn point
             const spawn = this.getSpawnPoint(playerIndex);
-            console.log('[GameVS] Local player spawn:', spawn);
+            console.error(`🔴 [GameVS] Local player spawn: (${spawn.x}, ${spawn.y})`);
 
             // Create local player entity (with input component)
             const player = createLocalPlayer({
@@ -561,11 +573,22 @@ export class GameVS extends Game {
                 isAlive: true
             }, playerIndex);
 
+            console.error('🔴 [GameVS] Player entity created, adding to game...');
+
             // Add to game entities (so systems process it)
             this.addEntity(player);
             this.players.set(playerData.playerId, player);
 
-            console.log('[GameVS] Local player created successfully');
+            console.error('🔴 [GameVS] Player added to game.entities and players Map');
+
+            // Debug: Verify entity was added to systems
+            const renderSystem = Array.from(this.systems).find(s => s.constructor.name === 'Render');
+            if (renderSystem) {
+                const inRender = renderSystem.entities.has(player);
+                console.error(`🔴 [GameVS] Local player in RenderSystem: ${inRender}`);
+            }
+
+            console.error('🔴🔴🔴 [GameVS] Local player created successfully! 🔴🔴🔴');
 
         } catch (error) {
             console.error('[GameVS] Failed to create local player:', error);
@@ -602,6 +625,13 @@ export class GameVS extends Game {
             this.addEntity(player);
             this.players.set(playerData.playerId, player);
 
+            // Debug: Verify entity was added to systems
+            const renderSystem = Array.from(this.systems).find(s => s.constructor.name === 'Render');
+            if (renderSystem) {
+                const inRender = renderSystem.entities.has(player);
+                console.log(`[GameVS] Remote player in RenderSystem: ${inRender}`);
+            }
+
             console.log('[GameVS] Remote player created successfully');
 
         } catch (error) {
@@ -616,18 +646,15 @@ export class GameVS extends Game {
      * Spawn points positioned for visibility in static camera view
      */
     getSpawnPoint(playerIndex) {
-        // Spawn points positioned in visible corners of arena
-        // Map dimensions: 1536x896 pixels
-        // Spawn points at 20% and 80% of dimensions for good spacing
+        // Spawn points from pvp_arena_compact.json (in grid coordinates)
+        // Grid to pixel: x * 64, y * 64
+        // Map spawnpoints: (2,2), (21,2), (2,11), (21,11)
         const defaultSpawns = [
-            { x: 300, y: 200 },    // Top-left (20% from edges)
-            { x: 1200, y: 200 },   // Top-right (80% horizontal)
-            { x: 300, y: 650 },    // Bottom-left (75% vertical)
-            { x: 1200, y: 650 }    // Bottom-right
+            { x: 2 * 64, y: 2 * 64 },     // P1: Top-left (128, 128)
+            { x: 21 * 64, y: 2 * 64 },    // P2: Top-right (1344, 128)
+            { x: 2 * 64, y: 11 * 64 },    // P3: Bottom-left (128, 704)
+            { x: 21 * 64, y: 11 * 64 }    // P4: Bottom-right (1344, 704)
         ];
-
-        // TODO: Find spawn points from map entities (entities with 'spawn' component)
-        // For now, use calculated positions based on map size
 
         const spawn = defaultSpawns[playerIndex] || defaultSpawns[0];
         console.log(`[GameVS] Player ${playerIndex} spawn point: (${spawn.x}, ${spawn.y})`);
@@ -686,20 +713,9 @@ export class GameVS extends Game {
         }
     }
 
-    /**
-     * Override update to include network sync
-     * @param {number} deltaTime - Time since last frame
-     */
-    update(deltaTime) {
-        // Call base game update
-        super.update(deltaTime);
-
-        // VS mode specific updates
-        if (this.matchStarted) {
-            this.updateMatchTimer(deltaTime);
-            this.updateNetworkSync(deltaTime);
-        }
-    }
+    // Use parent's ECS game loop - no override needed
+    // All systems (Input, Movement, Collision, Gravity, Render, Animation, NetworkSync)
+    // are called by parent's loop() via this.systems.forEach()
 
     /**
      * Update match timer
@@ -890,13 +906,15 @@ export class GameVS extends Game {
     cleanup() {
         console.log('[GameVS] Cleaning up VS mode resources');
 
-        // Disconnect network
-        if (this.networkClient) {
-            this.networkClient.disconnect();
+        // NEW: Cleanup VSSyncManager
+        if (this.syncManager) {
+            this.syncManager.cleanup();
         }
 
-        // Clear players
-        this.players.clear();
+        // NEW: Cleanup VSRenderBridge
+        if (this.renderBridge) {
+            this.renderBridge.cleanup();
+        }
 
         // Remove countdown overlay
         const overlay = document.getElementById('countdown-overlay');

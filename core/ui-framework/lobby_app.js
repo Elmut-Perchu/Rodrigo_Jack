@@ -47,6 +47,11 @@ export async function initializeLobby() {
     players: [],
     minPlayers: 2,
 
+    // Lobby setup: which difficulty the next added opponent gets, and how
+    // the room is divided up.
+    botLevelChoice: 'soldier',
+    teamMode: 'ffa',
+
     // Chat
     chatMessages: [
       {
@@ -85,7 +90,7 @@ export async function initializeLobby() {
         // Main content grid
         h('div', { className: 'lobby-content' },
           // Players section
-          PlayerListComponent(state),
+          PlayerListComponent(state, bridge?.actions || {}),
 
           // Chat section
           ChatBoxComponent(state, bridge?.actions || {})
