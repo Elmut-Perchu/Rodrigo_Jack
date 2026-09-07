@@ -8,6 +8,17 @@ const BASE_PATH = (typeof window !== 'undefined' && window.location.pathname.inc
     : './';
 
 /**
+ * How loud the arena is overall.
+ *
+ * Applied on top of every individual sound's own level, so the balance between
+ * them - a footstep against a sword against a death - is untouched and only
+ * the whole thing moves. Four fighters swinging, shooting and landing at once
+ * adds up to far more noise than the solo game ever makes from the same
+ * samples, which is why the arena needs its own figure rather than Adventure's.
+ */
+const ARENA_VOLUME = 0.45;
+
+/**
  * Sound for the arena, using the same samples and the same state-driven
  * triggering as Adventure mode (core/systems/audio_system.js).
  *
@@ -34,6 +45,9 @@ export class VSAudio extends System {
 
         this.registerSounds(this.audio);
         this.registerSounds(this.remoteAudio);
+
+        this.audio.setMasterVolume(ARENA_VOLUME);
+        this.remoteAudio.setMasterVolume(ARENA_VOLUME);
 
         // Other players are quieter than you are
         this.remoteAudio.setCategoryVolume('sfx', 0.45);
@@ -174,7 +188,9 @@ class MetallicClash {
 
         const now = ctx.currentTime;
         const out = ctx.createGain();
-        out.gain.value = 0.35;
+        // Synthesised rather than played through the Audio component, so it
+        // has to carry the arena's level itself.
+        out.gain.value = 0.35 * ARENA_VOLUME;
         out.connect(ctx.destination);
 
         // Inharmonic partials are what make metal sound like metal rather
