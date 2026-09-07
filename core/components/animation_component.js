@@ -94,7 +94,13 @@ export class EffectAnimation extends Animation {
 }
 
 export class PlayerAnimation extends Animation {
-    constructor() {
+    /**
+     * @param {string} [sheetPath] - Spritesheet to use instead of the default.
+     *        VS mode passes one of the recoloured sheets so each fighter wears
+     *        their own colours (see constants/vs_palette.js). Adventure passes
+     *        nothing and keeps the original artwork.
+     */
+    constructor(sheetPath) {
         super();
         this.sequences = {
             idle: {
@@ -162,7 +168,10 @@ export class PlayerAnimation extends Animation {
         };
         // Detect if we're in views/ subdirectory
         const basePath = window.location.pathname.includes('/views/') ? '../' : './';
-        this.init(`${basePath}assets/sprites/Adventurer_Sprite_Sheet_v1.5.png`, 72, 72, 13, 15);
+        const sheet = sheetPath || `${basePath}assets/sprites/Adventurer_Sprite_Sheet_v1.5.png`;
+        // Every recoloured sheet is a palette swap of the original, so the
+        // frame grid is identical and the sequences above stay valid.
+        this.init(sheet, 72, 72, 13, 15);
     }
 }
 

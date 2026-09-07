@@ -14,5 +14,12 @@ export class Arrow extends Component {
         this.spawnTime = performance.now(); // Timestamp spawn
         this.collisionDelay = 100; // ms avant activation collision (évite collision spawn)
         this.impactPosition = null; // Position d'impact sauvegardée {x, y}
+
+        // VS mode: une flèche perd de la vitesse et retombe passé sa portée,
+        // qui dépend du temps de bande. Infinity = portée illimitée, le
+        // comportement d'Adventure.
+        this.speed = null;
+        this.maxRange = Infinity;
+        this.travelled = 0;
     }
 }

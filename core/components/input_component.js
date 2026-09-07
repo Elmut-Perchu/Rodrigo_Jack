@@ -1,9 +1,14 @@
 //core/components/input_component.js
 import { Component } from './component.js';
+import { dlog } from '../debug_log.js';
+
+// Global counter for unique IDs
+let inputInstanceCounter = 0;
 
 export class Input extends Component {
     constructor() {
         super();
+        this.instanceId = ++inputInstanceCounter;
         this.keys = new Set();
         this.vector = { h: 0, v: 0 };
         this.jump = 0;
@@ -13,7 +18,12 @@ export class Input extends Component {
         this.rollStartTime = 0;
         this.rollDuration = 400; // durée de la roulade en ms
 
+        dlog(`🟡 [INPUT COMPONENT] Created instance #${this.instanceId}`);
+
         document.addEventListener('keydown', (e) => {
+            // 🔴 DEBUG: Log keydown events with instance ID
+            dlog(`🔴 [INPUT COMPONENT #${this.instanceId}] keydown: ${e.key}, keys: [${Array.from(this.keys).join(',')}]`);
+
             this.keys.add(e.key);
             if (this.keys.has('ArrowUp') && this.jump < 2 && !this.jumpPressed) {
                 this.jump++;

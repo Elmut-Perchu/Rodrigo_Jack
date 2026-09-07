@@ -11,6 +11,11 @@ export class Visual extends Component {
     this.bg = bg;
     this.tx = tx;
     this.ty = ty;
+    // Extra rotation, in radians, applied on top of the horizontal flip.
+    // Only VS arrows use it - they can now be loosed up, down and diagonally,
+    // and a shaft pointing the wrong way reads as a bug. Everything else
+    // leaves it at 0, which renders identically to before.
+    this.rotation = 0;
   }
 
   updateSprite(frameX, frameY, isFlipped, spritePath, frameWidth, frameHeight, columns, rows) {
@@ -41,6 +46,10 @@ export class Visual extends Component {
     const y = -(frameY * this.height);
 
     this.div.style.backgroundPosition = `${x}px ${y}px`;
-    this.div.style.transform = isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
+
+    const flip = isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
+    this.div.style.transform = this.rotation
+      ? `${flip} rotate(${this.rotation}rad)`
+      : flip;
   }
 }

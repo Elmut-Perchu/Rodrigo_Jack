@@ -14,17 +14,23 @@ import { ARROW_CONSTANTS } from '../constants/arrow_constants.js';
  * @param {number} y - Position y de spawn
  * @param {Object} direction - Direction normalisée {x, y} (-1 ou 1 pour x, 0 pour y en MVP)
  * @param {string} ownerUUID - UUID du player qui tire
+ * @param {number} [speed] - Vitesse de lancement (défaut: ARROW_SPEED).
+ *        VS mode varie la vitesse selon le temps de bande; Adventure garde
+ *        la valeur par défaut et n'est pas affecté.
+ * @param {number} [maxRange] - Distance parcourue avant que la flèche ne
+ *        retombe. Infinity = portée illimitée (comportement Adventure).
  */
-export function createArrow(x, y, direction, ownerUUID) {
+export function createArrow(x, y, direction, ownerUUID, speed, maxRange) {
     const arrow = new Entity();
 
     // Position
     arrow.addComponent('position', new Position(x, y));
 
     // Velocity (direction × vitesse)
+    const launchSpeed = speed || ARROW_CONSTANTS.ARROW_SPEED;
     const velocity = new Velocity();
-    velocity.vx = direction.x * ARROW_CONSTANTS.ARROW_SPEED;
-    velocity.vy = direction.y * ARROW_CONSTANTS.ARROW_SPEED;
+    velocity.vx = direction.x * launchSpeed;
+    velocity.vy = direction.y * launchSpeed;
     arrow.addComponent('velocity', velocity);
 
     // Visual
@@ -50,6 +56,11 @@ export function createArrow(x, y, direction, ownerUUID) {
     const arrowComp = new Arrow();
     arrowComp.ownerUUID = ownerUUID;
     arrowComp.direction = { ...direction };
+    arrowComp.speed = launchSpeed;
+    // A missing range arrives as 0 or undefined; both mean "unlimited", the
+    // Adventure behaviour. Taking 0 literally made such an arrow drop the
+    // instant it was fired.
+    if (maxRange) arrowComp.maxRange = maxRange;
     arrow.addComponent('arrow', arrowComp);
 
     // Animation component pour gérer sprite flying + impact

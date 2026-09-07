@@ -1,4 +1,12 @@
 // constants/arrow_constants.js
+
+// Adventure runs from the site root, VS mode from /views/. Resolving the
+// prefix once here keeps arrow sprites loading in both, the same way
+// tile_create.js and animation_component.js already do it.
+const BASE_PATH = (typeof window !== 'undefined' && window.location.pathname.includes('/views/'))
+    ? '../'
+    : './';
+
 export const ARROW_CONSTANTS = {
     // Gameplay
     STARTING_ARROWS: 3,
@@ -19,7 +27,7 @@ export const ARROW_CONSTANTS = {
     FPS_IMPACT: 5, // frames/sec pour animation impact
 
     // Sprites - ARROWS (Arrows_pack.png: 3072×4096)
-    ARROW_SPRITE_SHEET: './assets/sprites/Arrows_pack.png',
+    ARROW_SPRITE_SHEET: `${BASE_PATH}assets/sprites/Arrows_pack.png`,
     ARROW_FRAME_WIDTH: 1024, // 3072 / 3 colonnes
     ARROW_FRAME_HEIGHT: 1024, // 4096 / 4 lignes
     ARROW_COLUMNS: 3,
@@ -28,7 +36,7 @@ export const ARROW_CONSTANTS = {
     ARROW_FRAME_FLYING: 0, // Colonne 0 = frame vol
 
     // Sprites - IMPACT (Arrow_impact_pack.png: 5120×5120)
-    IMPACT_SPRITE_SHEET: './assets/sprites/Arrow_impact_pack.png',
+    IMPACT_SPRITE_SHEET: `${BASE_PATH}assets/sprites/Arrow_impact_pack.png`,
     IMPACT_FRAME_WIDTH: 1024, // 5120 / 5 colonnes
     IMPACT_FRAME_HEIGHT: 1280, // 5120 / 4 lignes
     IMPACT_COLUMNS: 5,
