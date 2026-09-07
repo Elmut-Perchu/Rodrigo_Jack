@@ -251,10 +251,10 @@ export class VSBot extends System {
             }
         }
 
-        // Too far above to engage even with the double jump (~190px of lift,
-        // roughly three 64px platforms): get underneath them instead and be
+        // Too far above to engage even with the double jump (~297px of lift,
+        // roughly four 64px platforms): get underneath them instead and be
         // waiting when they come down.
-        if (heightGap > 260) return 'approach';
+        if (heightGap > 360) return 'approach';
 
         // Levels that understand spacing back off when they are too close to
         // use the bow but not close enough to swing.
@@ -512,9 +512,10 @@ export class VSBot extends System {
      * Spends the second jump to reach a ledge.
      *
      * Held until the bot is on the way down, which is where it buys the most
-     * height: a single jump peaks around 95px, a second one roughly doubles
-     * that, so spending it well is the difference between reaching a ledge and
-     * bouncing off its edge.
+     * height: a single jump peaks around 148px - enough for the arena's short
+     * steps - and a second one roughly doubles that, which is the only way up
+     * the tall ones. Spending it well is the difference between reaching a
+     * ledge and bouncing off its edge.
      */
     tryAirJump(entity, bot, input, property, self, now) {
         if ((property.airJumpsUsed || 0) > 0) return;

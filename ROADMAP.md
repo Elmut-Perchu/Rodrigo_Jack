@@ -459,6 +459,9 @@
 - [ ] Commit: "Testing: All audit points validated"
 
 ### Days 34-35: Final Polish
+- [x] Affiner le ressenti des déplacements VS (arc de saut, coyote time, tampon
+      d'entrée, hauteur variable, pas de temps fixe) — voir
+      `constants/vs_movement_constants.js`
 - [ ] Add VS-specific sounds (battle music, announcer)
 - [ ] Create victory/defeat screens
 - [ ] Add match statistics (kills, deaths, time)

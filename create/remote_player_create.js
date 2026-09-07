@@ -14,6 +14,7 @@ import { Interpolation } from '../core/components/interpolation_component.js';
 import { BowState } from '../core/components/bow_state_component.js';
 import { SpectreState } from '../core/components/spectre_state_component.js';
 import { paletteFor } from '../constants/vs_palette.js';
+import { JUMP_STRENGTH } from '../constants/vs_movement_constants.js';
 
 /**
  * Map network animation names to PlayerAnimation state names
@@ -96,11 +97,11 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
         movable: true,
         speed: 450,
         solid: false,
-        // 540 against VSGravity's 1500 gives roughly 97px of lift, and about
-        // 194px using the second jump - one arena tile is 64px, so a single
-        // jump now clears a platform with room to spare and a double reaches
-        // three. Adventure keeps its own 425 (create/player_create.js).
-        jumpStrength: 540,
+        // ~148px of lift, and ~297px using the second jump. The arena climbs
+        // in steps of 128px and 192px, so a short step costs one jump and a
+        // tall one costs both. Adventure keeps its own 425 and its own feel
+        // entirely (create/player_create.js).
+        jumpStrength: JUMP_STRENGTH,
         applyGravity: true,
         isOnGround: false,
         isCollided: false,

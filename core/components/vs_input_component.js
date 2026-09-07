@@ -62,7 +62,10 @@ export class VSControls extends Component {
         this.roll = false;
         this.isRolling = false;
 
-        this._jumpHeld = false;
+        // Read by VSInput: releasing the key while still rising ends the climb
+        // early, which is what gives the jump a range of heights rather than
+        // one fixed arc.
+        this.jumpHeld = false;
 
         this._onKeyDown = (e) => {
             if (isTyping(e.target)) return;
@@ -72,11 +75,12 @@ export class VSControls extends Component {
 
             this.keys.add(key);
 
-            // Jump is edge-triggered: VSInput.tryJump consumes vector.v and
-            // zeroes it, so holding space cannot climb the sky one frame at a
-            // time. A fresh press is what buys the second jump.
-            if (key === JUMP && !this._jumpHeld) {
-                this._jumpHeld = true;
+            // Jump is edge-triggered: VSInput.tryJump consumes vector.v, so
+            // holding space cannot climb the sky one frame at a time. A fresh
+            // press is what buys the second jump - and one that arrives too
+            // early to be used is held for a moment rather than thrown away.
+            if (key === JUMP && !this.jumpHeld) {
+                this.jumpHeld = true;
                 this.vector.v = 1;
             }
         };
@@ -84,14 +88,14 @@ export class VSControls extends Component {
         this._onKeyUp = (e) => {
             const key = normalise(e.key);
             this.keys.delete(key);
-            if (key === JUMP) this._jumpHeld = false;
+            if (key === JUMP) this.jumpHeld = false;
         };
 
         // Keys held when the window loses focus would otherwise stay held
         // forever - a fighter walking into a wall until you alt-tab back.
         this._onBlur = () => {
             this.keys.clear();
-            this._jumpHeld = false;
+            this.jumpHeld = false;
         };
 
         document.addEventListener('keydown', this._onKeyDown);

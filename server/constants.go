@@ -6,12 +6,13 @@ const (
 	//
 	// These must stay ABOVE what legitimate play produces, otherwise every
 	// normal move is rejected as cheating and the player is snapped back.
-	// Reference values from create/remote_player_create.js and the VS systems:
+	// Reference values from constants/vs_movement_constants.js:
 	//   horizontal speed  450  (property.speed)
-	//   jump strength     425  (property.jumpStrength)
-	//   terminal fall     900  (VSGravity clamp)
-	// Worst-case resultant is sqrt(450^2 + 900^2) ~= 1006, so leave headroom
-	// for latency jitter rather than sitting right on the limit.
+	//   jump strength     660  (JUMP_STRENGTH)
+	//   terminal fall     900  (TERMINAL_VELOCITY)
+	// The fastest legitimate moment is a long fall, not a jump: sqrt(450^2 +
+	// 900^2) ~= 1006 against sqrt(450^2 + 660^2) ~= 799. Headroom above that
+	// is for latency jitter rather than sitting right on the limit.
 	MAX_VELOCITY         = 1200.0 // Maximum player velocity (pixels/second)
 	MAX_MOVEMENT_PER_SEC = 1500.0 // Maximum distance player can move per second
 	MAX_ACCELERATION     = 100.0  // Maximum acceleration change

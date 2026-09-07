@@ -18,6 +18,15 @@ const MIN_BOUNCE_SPEED = 160;
 const KNOCKBACK_MS = 170;
 
 export class VSCollision extends System {
+    constructor(game) {
+        super(game);
+
+        // Runs with the rest of the physics on the fixed step, so a fighter
+        // is never moved further between two collision tests on a slow frame
+        // than on a fast one.
+        this.fixedStep = true;
+    }
+
     update() {
         const entities = Array.from(this.entities);
 
@@ -185,8 +194,16 @@ export class VSCollision extends System {
                 velocity.vx += normalX * bounce;
                 velocity.vy -= normalY * bounce;
 
+                // Armed once per collision, never extended. Refreshing it on
+                // every step meant two fighters leaning on each other kept
+                // renewing the lockout indefinitely, so neither ever got their
+                // footing back until the contact broke - which needed the
+                // footing they no longer had.
                 const property = entity.getComponent('property');
-                if (property) property.knockbackUntil = performance.now() + KNOCKBACK_MS;
+                const now = performance.now();
+                if (property && !(property.knockbackUntil > now)) {
+                    property.knockbackUntil = now + KNOCKBACK_MS;
+                }
             }
         }
     }

@@ -20,6 +20,11 @@ export class BotInput extends Component {
         this.vector = { h: 0, v: 0 };
         this.jump = 0;
 
+        // Bots jump to full height. VSInput cuts a jump short when this goes
+        // false partway up; deciding when a shorter hop is the better move is
+        // a question for VSBot, not something to leave to a missing field.
+        this.jumpHeld = true;
+
         // Where the bow points, exactly as VSControls reports it. A bot that
         // only ever fires along the ground would be unable to answer a shot
         // from a ledge.
