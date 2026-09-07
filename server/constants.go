@@ -21,6 +21,15 @@ const (
 	MAP_WIDTH  = 1536.0
 	MAP_HEIGHT = 896.0
 
+	// How far outside those bounds a legitimate position can sit.
+	//
+	// Positions are the sprite's top-left corner, but a fighter's body is 55px
+	// to the right of it and 79px below. Standing in one of the boundary
+	// passages therefore puts the reported corner outside the map while the
+	// fighter is plainly inside it. Without this, crossing a passage was
+	// flagged as cheating and the player was snapped back.
+	POSITION_MARGIN = 128.0
+
 	// Network constants
 	MAX_MESSAGE_RATE = 60 // Maximum messages per second (60fps)
 	MIN_UPDATE_DELTA = 16 // Minimum milliseconds between updates (1000/60fps)

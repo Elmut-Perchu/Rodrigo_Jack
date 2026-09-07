@@ -1,111 +1,111 @@
 {
-    "metadata": {
-        "width": 24,
-        "height": 14,
-        "tileSize": 64,
-        "mapType": "pvp_arena",
-        "maxPlayers": 4,
-        "matchDuration": 180
+  "metadata": {
+    "width": 24,
+    "height": 14,
+    "tileSize": 64,
+    "mapType": "pvp_arena",
+    "maxPlayers": 4,
+    "matchDuration": 180
+  },
+  "background": {
+    "path": "background/back-map1.webp"
+  },
+  "music": {
+    "path": "./assets/sounds/music/map1_theme.wav",
+    "volume": 0.4,
+    "fadeIn": 500,
+    "fadeOut": 500,
+    "layered": false
+  },
+  "spawnpoints": [
+    {
+      "x": 2,
+      "y": 2,
+      "playerId": 1,
+      "safeZone": 3
     },
-    "background": {
-        "path": "background/back-map1.webp"
+    {
+      "x": 21,
+      "y": 2,
+      "playerId": 2,
+      "safeZone": 3
     },
-    "music": {
-        "path": "./assets/sounds/music/map1_theme.wav",
-        "volume": 0.4,
-        "fadeIn": 500,
-        "fadeOut": 500,
-        "layered": false
+    {
+      "x": 2,
+      "y": 11,
+      "playerId": 3,
+      "safeZone": 3
     },
-    "spawnpoints": [
-        {
-            "x": 2,
-            "y": 2,
-            "playerId": 1,
-            "safeZone": 3
-        },
-        {
-            "x": 21,
-            "y": 2,
-            "playerId": 2,
-            "safeZone": 3
-        },
-        {
-            "x": 2,
-            "y": 11,
-            "playerId": 3,
-            "safeZone": 3
-        },
-        {
-            "x": 21,
-            "y": 11,
-            "playerId": 4,
-            "safeZone": 3
-        }
-    ],
-    "powerups": [
-        {
-            "x": 12,
-            "y": 7,
-            "type": "health",
-            "respawnTime": 10000
-        },
-        {
-            "x": 12,
-            "y": 3,
-            "type": "speed_boost",
-            "respawnTime": 15000
-        },
-        {
-            "x": 12,
-            "y": 10,
-            "type": "damage_up",
-            "respawnTime": 15000
-        },
-        {
-            "x": 5,
-            "y": 7,
-            "type": "health",
-            "respawnTime": 12000
-        },
-        {
-            "x": 18,
-            "y": 7,
-            "type": "health",
-            "respawnTime": 12000
-        },
-        {
-            "x": 8,
-            "y": 4,
-            "type": "speed_boost",
-            "respawnTime": 18000
-        },
-        {
-            "x": 15,
-            "y": 4,
-            "type": "damage_up",
-            "respawnTime": 18000
-        }
-    ],
-    "tiles": [
-        "111111111111111111111111",
-        "100000000000000000000001",
-        "100000000000000000000001",
-        "100111100000000000111001",
-        "100000000000000000000001",
-        "111000001111111110000111",
-        "100000001000000010000001",
-        "100000001000000010000001",
-        "111000001111111110000111",
-        "100000000000000000000001",
-        "100111100000000000111001",
-        "100000000000000000000001",
-        "100000000000000000000001",
-        "111111111111111111111111"
-    ],
-    "enemy1": [],
-    "enemy2": [],
-    "enemy3": [],
-    "collectible": [],
-    "nextLevel": null
+    {
+      "x": 21,
+      "y": 11,
+      "playerId": 4,
+      "safeZone": 3
+    }
+  ],
+  "powerups": [
+    {
+      "x": 12,
+      "y": 7,
+      "type": "health",
+      "respawnTime": 10000
+    },
+    {
+      "x": 12,
+      "y": 3,
+      "type": "speed_boost",
+      "respawnTime": 15000
+    },
+    {
+      "x": 12,
+      "y": 10,
+      "type": "damage_up",
+      "respawnTime": 15000
+    },
+    {
+      "x": 5,
+      "y": 7,
+      "type": "health",
+      "respawnTime": 12000
+    },
+    {
+      "x": 18,
+      "y": 7,
+      "type": "health",
+      "respawnTime": 12000
+    },
+    {
+      "x": 8,
+      "y": 4,
+      "type": "speed_boost",
+      "respawnTime": 18000
+    },
+    {
+      "x": 15,
+      "y": 4,
+      "type": "damage_up",
+      "respawnTime": 18000
+    }
+  ],
+  "tiles": [
+    "111100111111111111100111",
+    "100000000000000000000001",
+    "100000000000000000000001",
+    "100111100000000000111001",
+    "100000000000000000000001",
+    "111000001111111110000111",
+    "000000001000000010000000",
+    "000000001000000010000000",
+    "111000001111111110000111",
+    "100000000000000000000001",
+    "100111100000000000111001",
+    "000000000000000000000000",
+    "000000000000000000000000",
+    "111100111111111111100111"
+  ],
+  "enemy1": [],
+  "enemy2": [],
+  "enemy3": [],
+  "collectible": [],
+  "nextLevel": null
 }

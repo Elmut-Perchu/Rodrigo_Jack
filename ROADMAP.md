@@ -462,6 +462,9 @@
 - [x] Affiner le ressenti des déplacements VS (arc de saut, coyote time, tampon
       d'entrée, hauteur variable, pas de temps fixe) — voir
       `constants/vs_movement_constants.js`
+- [x] Passages aux bords de l'arène : sortir d'un côté ramène de l'autre,
+      tomber par le sol ramène par le plafond — voir
+      `constants/vs_wrap_constants.js` et `core/systems_vs/vs_wrap_system.js`
 - [ ] Add VS-specific sounds (battle music, announcer)
 - [ ] Create victory/defeat screens
 - [ ] Add match statistics (kills, deaths, time)

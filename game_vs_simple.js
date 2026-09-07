@@ -7,6 +7,7 @@ import { TILE_CONSTANTS } from './constants/tile_constants.js';
 import { VSInput } from './core/systems_vs/vs_input_system.js';
 import { VSGravity } from './core/systems_vs/vs_gravity_system.js';
 import { VSMovement } from './core/systems_vs/vs_movement_system.js';
+import { VSWrap } from './core/systems_vs/vs_wrap_system.js';
 import { VSCollision } from './core/systems_vs/vs_collision_system.js';
 import { VSRender } from './core/systems_vs/vs_render_system.js';
 import { VSBow } from './core/systems_vs/vs_bow_system.js';
@@ -82,6 +83,9 @@ export class GameVSSimple {
         this.addSystem(new VSSpectre(this));
         this.addSystem(new VSGravity(this));
         this.addSystem(new VSMovement(this));
+        // Between the two on purpose: a body that left the arena is put back
+        // in on the far side before the tiles there are consulted.
+        this.addSystem(new VSWrap(this));
         this.addSystem(new VSCollision(this));
         this.arrowSystem = new VSArrow(this); // Arrow flight, impact, pickup
         this.addSystem(this.arrowSystem);
@@ -132,6 +136,16 @@ export class GameVSSimple {
         const response = await fetch(`/assets/maps/${mapName}.json`);
         const mapData = await response.json();
         this.currentMap = mapData;
+
+        // The span a body travels before it comes back where it started.
+        // Read from the map rather than hard-coded so a second arena of a
+        // different size wraps at its own edges.
+        const meta = mapData.metadata || {};
+        const tileSize = meta.tileSize || TILE_CONSTANTS.SCALED_SIZE;
+        this.arena = {
+            width: (meta.width || 0) * tileSize,
+            height: (meta.height || 0) * tileSize
+        };
 
         // Create tiles from map data
         if (mapData.tiles) {
@@ -797,6 +811,14 @@ export class GameVSSimple {
             playerName: playerName || 'Player',
             playerId: playerId
         }, playerIndex);
+
+        // Their crossings have to be drawn the short way round, or a wrap
+        // reads as a sprint back across the whole arena (see Interpolation).
+        const interpolation = player.getComponent('interpolation');
+        if (interpolation && this.arena) {
+            interpolation.wrapWidth = this.arena.width;
+            interpolation.wrapHeight = this.arena.height;
+        }
 
         this.addEntity(player);
         this.remotePlayers.set(playerId, player);

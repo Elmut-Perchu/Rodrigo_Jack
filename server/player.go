@@ -480,7 +480,11 @@ func (p *Player) handlePlayerState(msg *Message) {
 	}
 
 	// VALIDATION 2: Check map bounds
-	if x < 0 || x > MAP_WIDTH || y < 0 || y > MAP_HEIGHT {
+	//
+	// Widened by POSITION_MARGIN: the arena's edges are passages, and a body
+	// halfway through one reports a corner just outside the map.
+	if x < -POSITION_MARGIN || x > MAP_WIDTH+POSITION_MARGIN ||
+		y < -POSITION_MARGIN || y > MAP_HEIGHT+POSITION_MARGIN {
 		log.Printf("[CHEAT] Player %s out of bounds: (%.2f, %.2f), map: %.2f x %.2f",
 			p.Name, x, y, MAP_WIDTH, MAP_HEIGHT)
 
@@ -498,8 +502,12 @@ func (p *Player) handlePlayerState(msg *Message) {
 	timeDelta := float64(timeSinceLastUpdate) / 1000.0 // Convert to seconds
 	maxAllowedDistance := MAX_MOVEMENT_PER_SEC * timeDelta
 
-	dx := x - p.X
-	dy := y - p.Y
+	// Measured the short way round each axis, so stepping through a passage
+	// counts as the few pixels it really is rather than the arena-wide jump it
+	// looks like. A genuine teleport across the middle is still the full
+	// distance and is still caught (see server/wrap.go).
+	dx := shortestDelta(x-p.X, MAP_WIDTH)
+	dy := shortestDelta(y-p.Y, MAP_HEIGHT)
 	distance := math.Sqrt(dx*dx + dy*dy)
 
 	if distance > maxAllowedDistance {
