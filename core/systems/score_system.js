@@ -4,7 +4,7 @@ import { System } from './system.js';
 export class ScoreSystem extends System {
     constructor() {
         super();
-        this.apiBaseUrl = 'http://localhost:8080/api/scores'; // URL du serveur Go
+        this.apiBaseUrl = 'http://localhost:8081/api/scores'; // URL du serveur Go
         this.scoresPerPage = 10;
         this.currentPage = 1;
         this.totalPages = 1;

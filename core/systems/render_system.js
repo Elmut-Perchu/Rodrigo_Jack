@@ -17,6 +17,17 @@ export class Render extends System {
     }
 
     update() {
+        // DEBUG: Count network players in entities
+        if (!this._debugCount) this._debugCount = 0;
+        this._debugCount++;
+        if (this._debugCount % 300 === 0) {
+            let networkPlayerCount = 0;
+            this.entities.forEach(e => {
+                if (e.getComponent('networkPlayer')) networkPlayerCount++;
+            });
+            console.log(`[RenderSystem] entities: ${this.entities.size}, networkPlayers: ${networkPlayerCount}`);
+        }
+
         this.entities.forEach((entity) => {
             const visual = entity.getComponent('visual');
             const position = entity.getComponent('position');

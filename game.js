@@ -58,6 +58,9 @@ export class Game {
         this.cutsceneSystem = null; // Référence au système de cinématiques
         this.skipIntro = false; // Option pour sauter l'intro (à des fins de test)
 
+        // Store initAsync promise for VS mode to await
+        this.initPromise = null;
+
         // Créer le menu principal SEULEMENT en mode Adventure
         if (this.mode !== 'vs') {
             this.mainMenu = createMainMenu(this, this.container);
@@ -89,7 +92,8 @@ export class Game {
             }
         });
 
-        this.initAsync().then(() => {
+        // Store promise so VS mode can await it
+        this.initPromise = this.initAsync().then(() => {
             // Utiliser bind pour préserver le contexte de this
             const boundLoop = this.loop.bind(this);
             requestAnimationFrame(boundLoop);
@@ -552,9 +556,11 @@ export class Game {
             if (this.cutsceneSystem && this.cutsceneSystem.isPlaying) {
                 this.cutsceneSystem.update(deltaTime);
             }
-            // DEBUG: Log en mode VS pour comprendre pourquoi en pause
-            if (this.mode === 'vs') {
-                console.warn('[Game] PAUSED in VS mode - systems not updating!');
+            // DEBUG: Throttle log to once per second
+            if (!this._pauseLogTime) this._pauseLogTime = 0;
+            if (currentTime - this._pauseLogTime > 1000) {
+                console.warn(`[Game] PAUSED (mode: ${this.mode})`);
+                this._pauseLogTime = currentTime;
             }
             return;
         }

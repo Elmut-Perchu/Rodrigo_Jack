@@ -1,5 +1,6 @@
 // core/systems/collision_system.js
 import { System } from './system.js';
+import { dlog } from '../debug_log.js';
 
 export class Collision extends System {
     update() {
@@ -48,6 +49,7 @@ export class Collision extends System {
         const property = entity.getComponent('property');
         const hitbox = entity.getComponent('circle_hitbox');
         const input = entity.getComponent('input');
+        const networkPlayer = entity.getComponent('networkPlayer');
 
         const circleCenter = hitbox.getCircleCenter(position, visual);
         const circleRadius = hitbox.collisionRadius;
@@ -85,7 +87,15 @@ export class Collision extends System {
                 const normalX = dx / distance;
                 const normalY = dy / distance;
 
+                // 🔴 DEBUG: Log collision corrections for local player
+                if (networkPlayer && networkPlayer.isLocal) {
+                    dlog(`🔵 [COLLISION] Hit tile at (${tilePos.x}, ${tilePos.y}), overlap=${overlap.toFixed(1)}, normal=(${normalX.toFixed(2)}, ${normalY.toFixed(2)})`);
+                }
+
                 if (Math.abs(normalX) > 0.7) {
+                    if (networkPlayer && networkPlayer.isLocal) {
+                        dlog(`🔵 [COLLISION] Blocking X: vx=${velocity.vx} → 0, pos.x += ${(normalX * overlap).toFixed(2)}`);
+                    }
                     velocity.vx = 0;
                     position.x = position.x + normalX * overlap;
                 }
@@ -94,6 +104,9 @@ export class Collision extends System {
                     if (normalY < 0) {
                         property.isOnGround = true;
                         if (input) input.jump = 0;
+                    }
+                    if (networkPlayer && networkPlayer.isLocal) {
+                        dlog(`🔵 [COLLISION] Blocking Y: vy=${velocity.vy} → 0, pos.y += ${(normalY * overlap).toFixed(2)}`);
                     }
                     velocity.vy = 0;
                     position.y = position.y + normalY * overlap;
@@ -107,6 +120,14 @@ export class Collision extends System {
         // 2. Collisions avec les autres entités circulaires
         for (const other of entities) {
             if (entity === other || other.getComponent('tile')) continue;
+
+            // CRITICAL FIX: In VS mode, skip player-to-player collisions
+            // Remote players are controlled by server, collision would cause "prison" effect
+            const otherNetworkPlayer = other.getComponent('networkPlayer');
+            if (networkPlayer && otherNetworkPlayer) {
+                // Both are network players - skip collision between them in VS mode
+                continue;
+            }
 
             const posB = other.getComponent('position');
             const visualB = other.getComponent('visual');

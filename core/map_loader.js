@@ -145,11 +145,14 @@ export class MapLoader {
         }
 
         // Créer le joueur au spawn point (maintenant en indices)
-        if (mapData.spawnpoint && mapData.spawnpoint.length > 0) {
+        // CRITICAL: Skip player creation in VS mode - players are created by GameVS
+        if (this.game.mode !== 'vs' && mapData.spawnpoint && mapData.spawnpoint.length > 0) {
             const spawn = mapData.spawnpoint[0];
             const pixelPos = this.gridToPixel(spawn.x, spawn.y);
             const player = createPlayer(pixelPos.x, pixelPos.y);
             this.game.addEntity(player);
+        } else if (this.game.mode === 'vs') {
+            console.log('[MapLoader] VS mode - skipping Adventure player creation');
         }
 
         // Charger les différents types d'ennemis (maintenant en indices)
