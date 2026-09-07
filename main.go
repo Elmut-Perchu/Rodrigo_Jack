@@ -69,7 +69,7 @@ func main() {
 	http.HandleFunc("/api/scores", corsMiddleware(handleScores))
 
 	// Démarrer le serveur
-	port := 8080
+	port := 8081
 	fmt.Printf("Serveur démarré sur le port %d\n", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }

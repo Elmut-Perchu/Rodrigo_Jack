@@ -2,14 +2,23 @@ package main
 
 // Game constants for server-side validation
 const (
-	// Movement validation
-	MAX_VELOCITY         = 400.0  // Maximum player velocity (pixels/second)
-	MAX_MOVEMENT_PER_SEC = 500.0  // Maximum distance player can move per second
+	// Movement validation.
+	//
+	// These must stay ABOVE what legitimate play produces, otherwise every
+	// normal move is rejected as cheating and the player is snapped back.
+	// Reference values from create/remote_player_create.js and the VS systems:
+	//   horizontal speed  450  (property.speed)
+	//   jump strength     425  (property.jumpStrength)
+	//   terminal fall     900  (VSGravity clamp)
+	// Worst-case resultant is sqrt(450^2 + 900^2) ~= 1006, so leave headroom
+	// for latency jitter rather than sitting right on the limit.
+	MAX_VELOCITY         = 1200.0 // Maximum player velocity (pixels/second)
+	MAX_MOVEMENT_PER_SEC = 1500.0 // Maximum distance player can move per second
 	MAX_ACCELERATION     = 100.0  // Maximum acceleration change
 
-	// Map bounds (pvp_arena1.json dimensions)
-	MAP_WIDTH  = 1280.0
-	MAP_HEIGHT = 720.0
+	// Map bounds (pvp_arena_compact.json: 24x14 tiles @ 64px)
+	MAP_WIDTH  = 1536.0
+	MAP_HEIGHT = 896.0
 
 	// Network constants
 	MAX_MESSAGE_RATE = 60 // Maximum messages per second (60fps)

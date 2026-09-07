@@ -87,6 +87,7 @@ func (r *Room) broadcastGameStateLocked() {
 			"facingRight": player.FacingRight,
 			"health":      player.Health,
 			"isAlive":     player.IsAlive,
+			"team":        player.Team,
 			"timestamp":   now, // CRITICAL: Add timestamp for interpolation
 		})
 	}

@@ -69,3 +69,14 @@ temp/
 coverage/
 *.cover
 *.coverage
+
+# Go server binaries
+server/rodrigo-jack-vs
+server/vs-server
+score-server
+
+# Test/debug artifacts
+.playwright-mcp/
+adventure.png
+arena-colors.png
+vs-bot-menu.png
