@@ -1,0 +1,73 @@
+# Pushes to main, deployed to Render.
+#
+# Render is meant to deploy on its own when a commit lands, and for this repo
+# it stopped doing so - so every fix sat in the repository looking broken
+# while the running binary was an older one. This workflow does not depend on
+# Render noticing anything: it calls each service's own deploy hook directly.
+#
+# To switch it on, add two repository secrets (Settings -> Secrets and
+# variables -> Actions -> New repository secret). Each value is the "Deploy
+# Hook" URL from that service's page on Render, under Settings -> Deploy Hook:
+#
+#   RENDER_VS_SERVER_HOOK   -> rodrigo-jack-vs-server
+#   RENDER_SCORE_API_HOOK   -> rodrigo-jack-score-api
+#
+# Until they exist the job simply reports that it is not configured and
+# succeeds, so an unconfigured repository never shows a failing build.
+
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main]
+  # Also runnable by hand from the Actions tab, for a redeploy without a commit.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the VS server deploy
+        env:
+          HOOK: ${{ secrets.RENDER_VS_SERVER_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_VS_SERVER_HOOK is not set - skipping."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 30 "$HOOK" > /dev/null
+          echo "VS server deploy requested."
+
+      - name: Trigger the score API deploy
+        env:
+          HOOK: ${{ secrets.RENDER_SCORE_API_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_SCORE_API_HOOK is not set - skipping."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 30 "$HOOK" > /dev/null
+          echo "Score API deploy requested."
+
+      # Waits for the new binary to actually be serving, and says so. This is
+      # a report, not a gate - a slow build is not a failed one - but it means
+      # the Actions tab answers "is my fix live?" without anyone having to
+      # curl anything.
+      - name: Wait for the new revision to be live
+        continue-on-error: true
+        run: |
+          want="${GITHUB_SHA:0:12}"
+          echo "Waiting for revision $want to serve..."
+          for _ in $(seq 1 30); do
+            live=$(curl --silent --max-time 30 \
+              https://rodrigo-jack-vs-server.onrender.com/health || true)
+            case "$live" in
+              *"$want"*)
+                echo "Live: $live"
+                exit 0
+                ;;
+            esac
+            sleep 20
+          done
+          echo "Still not live after 10 minutes. Last answer: ${live:-none}"
+          echo "Check the service's Events tab on Render."

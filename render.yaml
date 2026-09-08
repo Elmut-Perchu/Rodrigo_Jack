@@ -14,6 +14,7 @@ services:
     runtime: go
     plan: free
     rootDir: .
+    autoDeploy: true
     buildCommand: go build -o app .
     startCommand: ./app
     healthCheckPath: /health
@@ -23,8 +24,12 @@ services:
     runtime: go
     plan: free
     rootDir: server
+    autoDeploy: true
     buildCommand: go build -o app .
     startCommand: ./app
+    # Answers with the commit the running binary was built from, so "the fix
+    # does not work" and "the fix is not deployed yet" can be told apart
+    # without guessing. See buildRevision() in server/main.go.
     healthCheckPath: /health
     envVars:
       # Set this once Vercel/Netlify gives you the frontend URL, e.g.
