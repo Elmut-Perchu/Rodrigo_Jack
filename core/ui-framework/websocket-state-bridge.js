@@ -251,7 +251,7 @@ export function createWebSocketBridge(frameworkState) {
      */
     goBack() {
       wsClient.disconnect();
-      window.location.href = 'vs_menu.html';
+      window.location.href = 'vs_room_browser.html';
     }
   };
 

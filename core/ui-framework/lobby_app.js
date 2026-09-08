@@ -29,8 +29,8 @@ export async function initializeLobby() {
 
   // Validate room code for non-hosts
   if (!isHost && !roomCode) {
-    alert('No room code provided. Redirecting to menu...');
-    window.location.href = 'vs_menu.html';
+    alert('No room code provided. Redirecting to the room browser...');
+    window.location.href = 'vs_room_browser.html';
     return;
   }
 
