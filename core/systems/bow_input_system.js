@@ -2,13 +2,13 @@
 import { System } from './system.js';
 
 /**
- * Système qui gère l'input SPACE pour le tir à l'arc
+ * Système qui gère la touche de l'arc pour le tir
  * Détecte press/hold/release et met à jour BowStateComponent
  */
 export class BowInputSystem extends System {
     constructor() {
         super();
-        this.spaceWasPressed = false; // Track previous frame state
+        this.drawWasPressed = false; // Track previous frame state
     }
 
     update() {
@@ -22,32 +22,32 @@ export class BowInputSystem extends System {
 
         if (!input || !bowState || !animation) return;
 
-        const spacePressed = input.arrowShoot; // SPACE key
+        const drawing = input.arrowShoot; // the bow key (see constants/controls.js)
 
         // Détection PRESS (transition false → true)
-        if (spacePressed && !this.spaceWasPressed) {
+        if (drawing && !this.drawWasPressed) {
             this.handleSpacePress(player, bowState, input, animation);
         }
 
         // Détection HOLD (reste true)
-        if (spacePressed && this.spaceWasPressed) {
+        if (drawing && this.drawWasPressed) {
             this.handleSpaceHold(player, bowState, animation);
         }
 
         // Détection RELEASE (transition true → false)
-        if (!spacePressed && this.spaceWasPressed) {
+        if (!drawing && this.drawWasPressed) {
             this.handleSpaceRelease(player, bowState, animation);
         }
 
         // Update previous state
-        this.spaceWasPressed = spacePressed;
+        this.drawWasPressed = drawing;
     }
 
     /**
-     * SPACE PRESS: Démarre la charge si conditions OK
+     * BOW PRESS: Démarre la charge si conditions OK
      */
     handleSpacePress(player, bowState, input, animation) {
-        // Annuler si W/X/C actifs
+        // Annuler si l'épée est active
         if (input.attack1 || input.attack2 || input.attack3) {
             return;
         }
@@ -75,10 +75,10 @@ export class BowInputSystem extends System {
     }
 
     /**
-     * SPACE HOLD: Maintenir l'état charging
+     * BOW HOLD: Maintenir l'état charging
      */
     handleSpaceHold(player, bowState, animation) {
-        // Si W/X/C pressés pendant hold → annulation
+        // Si l'épée est sortie pendant le hold → annulation
         const input = player.getComponent('input');
         if (input.attack1 || input.attack2 || input.attack3) {
             this.cancelCharge(player, bowState, animation);
@@ -92,7 +92,7 @@ export class BowInputSystem extends System {
     }
 
     /**
-     * SPACE RELEASE: Tirer si charge complète, sinon annuler
+     * BOW RELEASE: Tirer si charge complète, sinon annuler
      */
     handleSpaceRelease(player, bowState, animation) {
         if (bowState.state !== 'charging') return;

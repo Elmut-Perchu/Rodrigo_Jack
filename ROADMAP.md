@@ -485,6 +485,9 @@
       jusqu'à une tuile et demie de pierre) — voir `spawnArrowEntity`
 - [x] Dégâts serveur alignés sur les quatre cœurs : `game_logic.go` gardait
       15/20/25 sur une santé de 8, chaque coup était mortel en ligne
+- [x] Mêmes touches en solo et en arène, définies une seule fois — voir
+      `constants/controls.js`. Saut sur espace, épée sur X (une touche, trois
+      coups enchaînés), arc sur W, magie sur C, roulade sur N
 - [ ] Add VS-specific sounds (battle music, announcer)
 - [ ] Create victory/defeat screens
 - [ ] Add match statistics (kills, deaths, time)

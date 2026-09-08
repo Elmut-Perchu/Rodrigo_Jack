@@ -74,23 +74,35 @@ rangedRadius = 300;     // Rayon des attaques à distance
 
 ## ⌨️ Contrôles (Input)
 
+Les touches sont communes aux deux modes et définies une seule fois dans
+`constants/controls.js`. Adventure et l'arène les lisent toutes les deux :
+un seul personnage, une seule paire de mains, une seule disposition.
+
 ### Touches de Mouvement
-**Fichier**: `core/components/input_component.js`
+**Fichier**: `constants/controls.js`, lu par `core/components/input_component.js`
 ```javascript
-ArrowLeft  → vector.h = -1  // Gauche
-ArrowRight → vector.h = 1   // Droite
-ArrowUp    → jump++         // Saut (max 2 sauts: double jump)
+ArrowLeft  | 'q' → vector.h = -1  // Gauche
+ArrowRight | 'd' → vector.h = 1   // Droite
+' '              → jump++         // Saut (max 2 sauts: double jump)
 ```
 
-### Touches d'Action (Adventure - non utilisées en VS Bomberman)
+Haut et bas ne servent à rien en Adventure (il n'y a rien à viser) et restent
+volontairement libres plutôt que de doubler la touche de saut : une habitude
+qui marche dans un mode et pas dans l'autre est pire que pas d'habitude.
+
+### Touches d'Action
 ```javascript
-'w' → attack1
-'x' → attack2
-'c' → attack3
-'v' → magicAttack
-' ' → arrowShoot (tir à l'arc)
-'n' → roll (roulade)
+'x' → attack1 | attack2 | attack3  // Épée : une touche, trois coups enchaînés
+'c' → magicAttack
+'w' → arrowShoot (tir à l'arc)
+'n' → roll (roulade) — Adventure uniquement pour l'instant
 ```
+
+L'épée avait une touche par coup. Elle n'en a plus qu'une, et les coups
+s'enchaînent dans l'ordre de `SWING_CYCLE` (`constants/vs_combat_constants.js`)
+comme dans l'arène : les trois animations restent atteignables, la variété
+vient de rester à l'attaque. Rompre plus de `COMBO_RESET_MS` recommence la
+chaîne.
 
 ### Système de Saut
 **Fichier**: `core/components/input_component.js`, `core/systems/input_system.js`

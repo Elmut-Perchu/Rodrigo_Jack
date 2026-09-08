@@ -1,47 +1,27 @@
 // core/components/vs_input_component.js - Arena controls
 import { Component } from './component.js';
+import {
+    LEFT, RIGHT, UP, DOWN,
+    JUMP, SWORD, BOW, MAGIC, SWALLOWED,
+    normalise, isTyping, held
+} from '../../constants/controls.js';
 
 /**
  * The keyboard as the arena reads it.
  *
- * Deliberately separate from the Adventure `Input` component even though the
- * two produce the same fields. The arena needs to *aim* - up, down and the
- * diagonals feed the bow - which means the direction keys can no longer double
- * as the jump, so every binding downstream of that had to move. Adventure's
- * controls are untouched.
- *
- *   arrows / ZQSD   move and aim
- *   space           jump (and the second jump)
- *   W               bow    - hold to draw further
- *   X               sword
- *   C               spectre - hold to charge, press again to send it
+ * The bindings themselves live in constants/controls.js, shared with
+ * Adventure's own Input component: one character, one pair of hands, one
+ * layout. What is arena-specific is here - chiefly the aim, since up, down
+ * and the diagonals feed the bow, which the solo game has no use for.
  *
  * The field names are the ones the VS systems already consume - `attack1` for
- * the sword, `arrowShoot` for the bow, `magicAttack` for the spectre - so what
- * changed here is which key raises them, not the contract. That is also what
- * lets a bot's BotInput stand in for this component unchanged.
+ * the sword, `arrowShoot` for the bow, `magicAttack` for the spectre - so a
+ * binding change never reaches past this file. That is also what lets a bot's
+ * BotInput stand in for this component unchanged.
  *
  * Named VSControls rather than VSInput to stay distinct from the VSInput
  * *system*, which is what turns these fields into movement.
  */
-
-// Held keys are normalised to lowercase, so a fighter with caps lock on, or
-// holding shift, still moves.
-const LEFT = new Set(['arrowleft', 'q']);
-const RIGHT = new Set(['arrowright', 'd']);
-const UP = new Set(['arrowup', 'z']);
-const DOWN = new Set(['arrowdown', 's']);
-
-const JUMP = ' ';
-const SWORD = 'x';
-const BOW = 'w';
-const SPECTRE = 'c';
-
-// Keys the browser would otherwise act on itself: space and the arrows scroll
-// the page, which is very noticeable now that the menus scroll.
-const SWALLOWED = new Set([
-    ' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'
-]);
 
 export class VSControls extends Component {
     constructor() {
@@ -123,7 +103,7 @@ export class VSControls extends Component {
 
         this.attack1 = this.keys.has(SWORD);
         this.arrowShoot = this.keys.has(BOW);
-        this.magicAttack = this.keys.has(SPECTRE);
+        this.magicAttack = this.keys.has(MAGIC);
     }
 
     /**
@@ -151,20 +131,6 @@ export class VSControls extends Component {
     }
 
     held(group) {
-        for (const key of group) {
-            if (this.keys.has(key)) return true;
-        }
-        return false;
+        return held(this.keys, group);
     }
-}
-
-function normalise(key) {
-    return typeof key === 'string' ? key.toLowerCase() : key;
-}
-
-/** Never steal keys from the chat box or a nickname field. */
-function isTyping(target) {
-    if (!target || !target.tagName) return false;
-    const tag = target.tagName.toLowerCase();
-    return tag === 'input' || tag === 'textarea' || target.isContentEditable === true;
 }
