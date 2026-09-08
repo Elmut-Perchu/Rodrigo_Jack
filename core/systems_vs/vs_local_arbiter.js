@@ -5,7 +5,6 @@ import {
     MAGIC_DAMAGE,
     MAX_HEALTH
 } from '../../constants/vs_combat_constants.js';
-import { VS_BOW } from '../../constants/vs_bow_constants.js';
 
 /**
  * Plays the part of the Go server for a match against the computer.
@@ -674,14 +673,11 @@ export class VSLocalArbiter {
             this.emit('arrow_dropped', { arrowId: data.arrowId, x: data.x, y: data.y });
         }
 
-        // Loosed with the bow against them: a killing blow, not a wound.
-        // Measured here from the two poses the referee already holds, so it
-        // is not something the shooter can claim.
-        const shooterPose = this.poseOf(shooterId);
-        const pointBlank = !!shooterPose
-            && Math.hypot(shooterPose.x - pose.x, shooterPose.y - pose.y) <= VS_BOW.POINT_BLANK_RANGE;
-
-        this.applyDamage(shooterId, victimId, 'arrow', pointBlank ? MAX_HEALTH : undefined);
+        // An arrow costs a heart wherever it was fired from. A close shot used
+        // to be fatal outright, which in a scrum - where fighters are barely
+        // out of arm's reach anyway - deleted an opponent at full health with
+        // nothing on screen to say why (server/combat_vs.go handleArrowHit).
+        this.applyDamage(shooterId, victimId, 'arrow');
     }
 
     /**

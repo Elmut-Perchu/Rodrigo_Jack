@@ -36,21 +36,15 @@ export const VS_BOW = {
 
     // Fraction of forward speed an exhausted arrow keeps as it drops, so it
     // arcs away rather than stopping dead in mid-air.
-    SPENT_DRAG: 0.45,
+    SPENT_DRAG: 0.45
 
-    // Muzzle range, in pixels, measured between the two fighters.
-    //
-    // An arrow loosed with the bow against someone does not wound them, it
-    // finishes them. That is what makes the bow worth closing with rather
-    // than only a way of holding someone off, and it gives the sword a real
-    // reason to fear a drawn bow at arm's length instead of walking into it.
-    //
-    // Two fighters actually in contact stand about 104px apart, body centre
-    // to body centre, so this is "pressed up against each other" and not
-    // merely "nearby": at a tile and a half away the shot is an ordinary one
-    // again. The referee measures it from the poses it already holds, so
-    // nothing about it is taken on a client's word.
-    POINT_BLANK_RANGE: 120
+    // There is deliberately no muzzle range here any more. An arrow loosed
+    // with the bow against someone used to finish them outright, which sounds
+    // like a rule and played like a fault: two fighters in contact stand
+    // about 104px apart, barely inside the range it used, so in any scrum an
+    // untimed tap of the bow deleted an opponent at full health with nothing
+    // on screen to explain it. An arrow costs a heart, wherever it was fired
+    // from (server/combat_vs.go handleArrowHit).
 };
 
 /** 0 at the moment the arrow is nocked, 1 at full draw. */

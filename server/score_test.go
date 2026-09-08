@@ -112,15 +112,52 @@ func TestFirstRoundScoresOneWinner(t *testing.T) {
 	}
 }
 
-// TestPointBlankArrowIsNotAnInstantKill pins down what a bow loosed against
-// someone is worth, so the figure can only change on purpose.
-func TestPointBlankArrowIsNotAnInstantKill(t *testing.T) {
-	if PointBlankDamage >= MAX_HEALTH {
-		t.Errorf("a point blank arrow worth %d against %d health kills outright",
-			PointBlankDamage, MAX_HEALTH)
+// TestAnArrowCostsOneHeartAtAnyRange pins the rule down where it can only
+// change on purpose: an arrow is worth a heart, and the distance it was fired
+// from does not enter into it. A close shot used to be fatal outright.
+func TestAnArrowCostsOneHeartAtAnyRange(t *testing.T) {
+	const halvesPerHeart = 2
+
+	if ArrowDamage != halvesPerHeart {
+		t.Fatalf("an arrow should cost one heart (%d half-hearts), it costs %d",
+			halvesPerHeart, ArrowDamage)
 	}
-	if PointBlankDamage <= ArrowDamage {
-		t.Errorf("a point blank arrow worth %d is no better than an ordinary one worth %d",
-			PointBlankDamage, ArrowDamage)
+
+	// Contact, and most of the arena away. Both must cost the same.
+	for _, gap := range []float64{0, 60, 119, 121, 800} {
+		room := NewRoom("TEST")
+
+		shooter := newTestPlayer("a-shooter", "shooter")
+		target := newTestPlayer("b-target", "target")
+		room.Players[shooter.ID] = shooter
+		room.Players[target.ID] = target
+		shooter.Room = room
+		target.Room = room
+
+		room.mu.Lock()
+		room.assignTeamsLocked()
+		room.IsGameActive = true
+		room.mu.Unlock()
+
+		shooter.X, shooter.Y = 400, 300
+		target.X, target.Y = 400+gap, 300
+
+		before := target.Health
+		shooter.handleArrowHit(&Message{
+			Type: "arrow_hit",
+			Data: map[string]interface{}{
+				"victimId": target.ID,
+				"x":        target.X,
+				"y":        target.Y,
+			},
+		})
+
+		if got := before - target.Health; got != ArrowDamage {
+			t.Errorf("at %.0fpx the arrow cost %d half-hearts, expected %d",
+				gap, got, ArrowDamage)
+		}
+		if !target.IsAlive {
+			t.Errorf("at %.0fpx a single arrow killed a fighter at full health", gap)
+		}
 	}
 }
