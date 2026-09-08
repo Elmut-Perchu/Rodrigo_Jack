@@ -7,6 +7,7 @@
  */
 
 import { WebSocketClient } from '../network/websocket_client.js';
+import { withWakeUp } from '../ui/wake_overlay.js';
 
 /**
  * Create WebSocket state bridge
@@ -264,9 +265,11 @@ export function createWebSocketBridge(frameworkState) {
     // Setup handlers before connecting
     setupMessageHandlers();
 
-    // Connect
+    // Connect. Wrapped in withWakeUp because Render's free tier puts the
+    // server to sleep after 15 min idle - the first attempt after that can
+    // take up to ~50s to come back.
     try {
-      await wsClient.connect(roomCode, playerName);
+      await withWakeUp(() => wsClient.connect(roomCode, playerName));
       frameworkState.connected = true;
       return { success: true };
     } catch (error) {
