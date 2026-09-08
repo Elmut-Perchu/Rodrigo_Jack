@@ -32,15 +32,32 @@ const hasTouchPoints = 'ontouchstart' in window
 
 // The shorter edge of the physical screen, not the window: a browser window
 // dragged narrow on a desktop is not a phone.
-const shortEdge = Math.min(
+const screenEdge = Math.min(
     window.screen?.width || window.innerWidth,
     window.screen?.height || window.innerHeight
 );
 
+// The shorter edge of the play area itself, always in CSS pixels.
+const viewportEdge = Math.min(window.innerWidth, window.innerHeight);
+
 export const IS_TOUCH = forced !== null ? forced === '1' : (coarsePointer || hasTouchPoints);
 
-/** A phone or a small tablet: touch *and* not much room. */
-export const IS_MOBILE = forced !== null ? forced === '1' : (IS_TOUCH && shortEdge <= 900);
+/**
+ * A phone or a small tablet: touch *and* not much room.
+ *
+ * Two ways of being small, because `screen` cannot quite be trusted. Most
+ * browsers report it in CSS pixels - 390 for a phone - but some Android builds
+ * report the physical panel instead, which on a 3x display is 1170 and sails
+ * straight past any sane threshold. The viewport is always in CSS pixels, so a
+ * play area under 500 of them is a phone whatever `screen` claims.
+ *
+ * The viewport test is deliberately the tighter of the two: a browser window
+ * dragged narrow on a touchscreen laptop is a window, not a phone, and 500 is
+ * well below anything a laptop is likely to be left at.
+ */
+export const IS_MOBILE = forced !== null
+    ? forced === '1'
+    : (IS_TOUCH && (screenEdge <= 900 || viewportEdge <= 500));
 
 /**
  * How far back the Adventure camera stands on a phone.
