@@ -1,10 +1,12 @@
 // core/systems/score_system.js
 import { System } from './system.js';
+import { SCORE_API_URL } from '../config.js';
+import { withWakeUp } from '../ui/wake_overlay.js';
 
 export class ScoreSystem extends System {
     constructor() {
         super();
-        this.apiBaseUrl = 'http://localhost:8081/api/scores'; // URL du serveur Go
+        this.apiBaseUrl = SCORE_API_URL;
         this.scoresPerPage = 10;
         this.currentPage = 1;
         this.totalPages = 1;
@@ -137,13 +139,13 @@ export class ScoreSystem extends System {
             // Soumettre au serveur
             console.log("Soumission du score:", scoreData);
 
-            const response = await fetch(this.apiBaseUrl, {
+            const response = await withWakeUp(() => fetch(this.apiBaseUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(scoreData)
-            });
+            }));
 
             if (!response.ok) {
                 console.error("Erreur lors de la soumission du score:", await response.text());
@@ -164,7 +166,7 @@ export class ScoreSystem extends System {
     async fetchScoresAndShowRanking(playerName) {
         try {
             // Récupérer les scores du serveur
-            const response = await fetch(`${this.apiBaseUrl}?page=1&limit=${this.scoresPerPage}`);
+            const response = await withWakeUp(() => fetch(`${this.apiBaseUrl}?page=1&limit=${this.scoresPerPage}`));
 
             if (response.ok) {
                 const data = await response.json();
@@ -387,7 +389,7 @@ export class ScoreSystem extends System {
     async loadPage(page, playerName, container) {
         try {
             // Récupérer les scores de la page demandée
-            const response = await fetch(`${this.apiBaseUrl}?page=${page}&limit=${this.scoresPerPage}`);
+            const response = await withWakeUp(() => fetch(`${this.apiBaseUrl}?page=${page}&limit=${this.scoresPerPage}`));
 
             if (response.ok) {
                 const data = await response.json();

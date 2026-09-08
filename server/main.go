@@ -4,21 +4,39 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
-// Allowed origins for CORS (whitelist)
-var allowedOrigins = []string{
-	"http://localhost:8000",
-	"http://localhost:3000",
-	"http://127.0.0.1:8000",
-	"http://127.0.0.1:3000",
-	"http://[::1]:8000",      // IPv6 localhost
-	"http://[::1]:3000",      // IPv6 localhost
-	// Add production domains here:
-	// "https://yourdomain.com",
+// Allowed origins for CORS (whitelist). The production frontend domain
+// (Vercel/Netlify) isn't known at build time, so it's appended from the
+// ALLOWED_ORIGINS env var (comma-separated) instead of being hardcoded here.
+var allowedOrigins = buildAllowedOrigins()
+
+func buildAllowedOrigins() []string {
+	origins := []string{
+		"http://localhost:8000",
+		"http://localhost:3000",
+		"http://127.0.0.1:8000",
+		"http://127.0.0.1:3000",
+		"http://[::1]:8000",  // IPv6 localhost
+		"http://[::1]:3000",  // IPv6 localhost
+	}
+
+	extra := os.Getenv("ALLOWED_ORIGINS")
+	if extra != "" {
+		for _, origin := range strings.Split(extra, ",") {
+			origin = strings.TrimSpace(origin)
+			if origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+	}
+
+	return origins
 }
 
 // WebSocket upgrader configuration
@@ -65,8 +83,12 @@ func main() {
 	router.HandleFunc("/api/rooms", handleGetRooms).Methods("GET")
 	router.HandleFunc("/api/rooms/{code}", handleGetRoom).Methods("GET")
 
-	// Start server
-	port := ":8080"
+	// Start server (Render impose le port via $PORT)
+	rawPort := os.Getenv("PORT")
+	if rawPort == "" {
+		rawPort = "8080"
+	}
+	port := ":" + rawPort
 	log.Printf("[Server] WebSocket server listening on %s", port)
 	log.Printf("[Server] WebSocket endpoint: ws://localhost%s/ws", port)
 	log.Printf("[Server] Health check: http://localhost%s/health", port)

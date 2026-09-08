@@ -438,6 +438,7 @@
         import { VSPauseMenu } from '../core/vs_pause_menu.js';
         import { getPlayerName } from '../core/vs_prefs.js';
         import { pickArena, ARENAS } from '../constants/vs_arenas.js';
+        import { withWakeUp } from '../core/ui/wake_overlay.js';
 
         // Parse URL parameters. The lobby only forwards ?room=CODE, so the
         // nickname is recovered from the storage the lobby wrote it to.
@@ -498,7 +499,10 @@
                 } else {
                     // Connect, reclaim our slot in the room the lobby put us in,
                     // then tell the server we are loaded so it can start the loop.
-                    await gameInstance.connectToServer(roomCode, playerName);
+                    // withWakeUp retries if Render's free tier put the server
+                    // to sleep - a direct reload here can't rely on the lobby
+                    // page having already woken it up.
+                    await withWakeUp(() => gameInstance.connectToServer(roomCode, playerName));
                     gameInstance.signalGameReady();
                     gameInstance.startNetworkSync();
                 }

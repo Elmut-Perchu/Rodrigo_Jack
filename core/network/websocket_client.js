@@ -5,6 +5,8 @@
  * Phase 3 - Real WebSocket implementation
  */
 
+import { WS_SERVER_URL } from '../config.js';
+
 /**
  * Per-tab session id identifying this player across the lobby -> arena
  * navigation, which closes the WebSocket.
@@ -34,13 +36,18 @@ export function getVsSessionId() {
 export class WebSocketClient {
     constructor() {
         this.ws = null;
-        this.serverUrl = 'ws://localhost:8080/ws';
+        this.serverUrl = WS_SERVER_URL;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 3000;
         this.messageHandlers = new Map();
         this.roomCode = null;
         this.playerName = null;
+        // Gates the internal auto-reconnect below to drops AFTER a real
+        // connection: the initial attempt is retried by the caller instead
+        // (see core/ui/wake_overlay.js), since a cold Render instance can
+        // take far longer to answer than this client's 5x3s retry budget.
+        this.hasConnectedOnce = false;
 
         // Message batching for performance
         this.batchEnabled = false; // CRITICAL FIX: Disable batching - it was preventing player_state from reaching server!
@@ -74,6 +81,7 @@ export class WebSocketClient {
                     console.log('[WebSocketClient] Connected successfully');
                     this.reconnectAttempts = 0;
                     this.connected = true;
+                    this.hasConnectedOnce = true;
 
                     // Start batch timer
                     if (this.batchEnabled) {
@@ -347,8 +355,10 @@ export class WebSocketClient {
             console.log('🔌 [WebSocketClient] Was clean:', event.wasClean);
         }
 
-        // Attempt reconnect if not max attempts reached
-        if (this.reconnectAttempts < this.maxReconnectAttempts && this.roomCode && this.playerName) {
+        // Attempt reconnect if not max attempts reached. Only for drops after
+        // a real connection - the initial attempt is retried by the caller
+        // (withWakeUp), which tolerates a much longer cold-start delay.
+        if (this.hasConnectedOnce && this.reconnectAttempts < this.maxReconnectAttempts && this.roomCode && this.playerName) {
             this.reconnectAttempts++;
             console.log(`[WebSocketClient] Reconnecting... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 

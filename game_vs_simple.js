@@ -1,4 +1,5 @@
 // game_vs_simple.js - Simplified VS Mode Game (Independent from Adventure)
+import { WS_SERVER_URL } from './core/config.js';
 import { createLocalPlayer, createRemotePlayer } from './create/remote_player_create.js';
 import { createTile } from './create/tile_create.js';
 import { TILE_CONSTANTS } from './constants/tile_constants.js';
@@ -321,7 +322,7 @@ export class GameVSSimple {
     /**
      * Connects, joins the room and resolves once the server confirms.
      */
-    connectToServer(roomCode, playerName, serverUrl = 'ws://localhost:8080/ws') {
+    connectToServer(roomCode, playerName, serverUrl = WS_SERVER_URL) {
         this.roomId = roomCode;
         this.playerName = playerName;
         this.sessionId = this.getSessionId();

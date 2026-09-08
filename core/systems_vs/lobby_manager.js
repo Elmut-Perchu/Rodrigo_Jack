@@ -6,6 +6,7 @@
  */
 
 import { WebSocketClient } from '../network/websocket_client.js';
+import { withWakeUp } from '../ui/wake_overlay.js';
 
 export class LobbyManager {
     constructor() {
@@ -151,8 +152,10 @@ export class LobbyManager {
             this.wsClient.markHandlersReady();
             console.log('[LobbyManager] Handlers marked as ready');
 
-            // Connect to server
-            await this.wsClient.connect(this.roomCode, this.playerName);
+            // Connect to server. Wrapped in withWakeUp because Render's free
+            // tier puts the server to sleep after 15 min idle - the first
+            // attempt after that can take up to ~50s to come back.
+            await withWakeUp(() => this.wsClient.connect(this.roomCode, this.playerName));
             console.log('[LobbyManager] Connected successfully');
 
         } catch (error) {

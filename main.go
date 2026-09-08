@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,11 +68,18 @@ func main() {
 
 	// Configurer les routes
 	http.HandleFunc("/api/scores", corsMiddleware(handleScores))
+	http.HandleFunc("/health", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
 
-	// Démarrer le serveur
-	port := 8081
-	fmt.Printf("Serveur démarré sur le port %d\n", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	// Démarrer le serveur (Render impose le port via $PORT)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8081"
+	}
+	fmt.Printf("Serveur démarré sur le port %s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
 // Gestionnaire de scores pour GET et POST

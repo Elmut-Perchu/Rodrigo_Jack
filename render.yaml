@@ -1,0 +1,33 @@
+# render.yaml - Render Blueprint for the two Go backends
+#
+# Deploy via Render's dashboard: New -> Blueprint -> pick this repo. Render
+# reads this file and creates both services below. The frontend (static
+# HTML/JS) is NOT deployed here - it goes to Vercel/Netlify separately, and
+# core/config.js already points at the service names used below.
+#
+# Free plan services spin down after 15 min idle and take up to ~50s to wake
+# on the next request - core/ui/wake_overlay.js covers that in the client.
+
+services:
+  - type: web
+    name: rodrigo-jack-score-api
+    runtime: go
+    plan: free
+    rootDir: .
+    buildCommand: go build -o app .
+    startCommand: ./app
+    healthCheckPath: /health
+
+  - type: web
+    name: rodrigo-jack-vs-server
+    runtime: go
+    plan: free
+    rootDir: server
+    buildCommand: go build -o app .
+    startCommand: ./app
+    healthCheckPath: /health
+    envVars:
+      # Set this once Vercel/Netlify gives you the frontend URL, e.g.
+      # https://rodrigo-jack.vercel.app - comma-separate multiple origins.
+      - key: ALLOWED_ORIGINS
+        sync: false
