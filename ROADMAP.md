@@ -14,6 +14,7 @@
 - **Phase 3**: ✅ Frontend VS (7 days) - COMPLETE
 - **Phase 4**: ✅ Multiplayer Sync (7 days) - COMPLETE
 - **Phase 5**: 🟡 Polish & Testing (11 days) - DEVELOPMENT COMPLETE, TESTING PENDING
+- **Phase 6**: ✅ Mobile (touch controls, zoomed-out camera, spirit paralysis) - COMPLETE
 
 **Overall Progress**: 31/36 development tasks completed (86%)
 **Status**: Development Phase Complete + Mini-Framework Integration - Ready for Testing
@@ -571,5 +572,57 @@
 
 ---
 
-**Last Updated**: [Date will be updated as you progress]
-**Current Phase**: Phase 0 - Planning Complete ✅
+## 📱 Phase 6: Mobile (Touch Controls + Spirit Rework)
+
+**Goal**: Both modes playable on a phone, and the spirit reworked from damage
+to paralysis.
+
+**Detection**: `core/mobile.js` decides once whether this is a touch device and
+a phone (`?touch=1` / `?touch=0` overrides it for testing on a desktop). Every
+other file reads that answer rather than asking again.
+
+### Touch controls (both modes)
+- [x] `core/ui/touch_controls.js` - floating stick on the right, four buttons on the left
+- [x] Button cluster: jump (bottom), bow (left), sword (right), spirit (top)
+- [x] Eight-way stick, which also aims the bow in VS
+- [x] Controls synthesise the real key events, so double jump / jump buffer /
+      jump cut / sword chain / bow draw / spirit gauge all behave identically
+      to a keyboard - bindings imported from `constants/controls.js`
+- [x] Mounted from `game.js` (Adventure, hidden during menus and cutscenes)
+      and from `views/vs_game.html` (VS)
+
+### Fullscreen
+- [x] `core/ui/mobile_fullscreen.js` - first touch claims the screen, long
+      press (600ms, off the controls) toggles it back and forth
+- [x] `viewport-fit=cover`, `user-scalable=no` and the web-app meta tags on
+      both pages (the only route to fullscreen on iOS Safari)
+
+### Adventure on a phone
+- [x] Camera pulled back to 0.6 (`CAMERA_ZOOM`) - `core/systems/camera_system.js`
+- [x] Counters drawn at 0.6 (`HUD_SCALE` / `ui()`): lives, coins/score, kill
+      tally, timer
+- [x] Fixed: the kill tally was drawn on top of the score panel; it now sits
+      under the hearts
+
+### VS on a phone
+- [x] Keyboard legend hidden, match clock moved out of the bottom centre
+- [x] Round banner stacked above the controls overlay
+
+### The spirit paralyses instead of wounding
+- [x] `constants/vs_paralysis_constants.js` - 2000ms, frames 78/79/80 (row 7,
+      first three columns) looped at 10fps
+- [x] `paralysed` sequence in `animation_component.js`
+- [x] Held fighters cannot walk, jump, swing, shoot or channel; gravity still
+      applies (VSInput / VSBow / VSSpectre / VSRender)
+- [x] Server: `applyParalysis` in `game_logic.go`, `player_paralysed`
+      broadcast, held fighters' attacks refused (`isHeld`)
+- [x] Local arbiter (bot matches) mirrors the same rules
+- [x] `MAGIC_DAMAGE` removed from both constant sets - a spirit cannot kill
+
+**Tested**: Adventure and VS both driven end to end through the touch overlay
+in Chromium at 844x390; `go build`, `go vet` and `go test ./...` clean.
+
+---
+
+**Last Updated**: 2026-09-08 - Phase 6 (mobile + spirit rework)
+**Current Phase**: Phase 5 testing pending; Phase 6 complete

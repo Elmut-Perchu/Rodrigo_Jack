@@ -105,7 +105,17 @@ const (
 	MAX_HEALTH   = 8
 	MELEE_DAMAGE = 1
 	ARROW_DAMAGE = 2
-	MAGIC_DAMAGE = 2
+
+	// A spirit is deliberately absent from that list: it deals no damage at
+	// all any more. Reaching its quarry holds them still for PARALYSIS_MS
+	// instead, which is a heavier threat than the two half-hearts it used to
+	// cost and a far more interesting one - it hands the opening to whoever
+	// is standing nearby rather than settling the exchange by itself. It also
+	// makes the weapon's price legible: the caster spends two seconds
+	// standing still to channel it, and buys two seconds of the same from
+	// someone else. See constants/vs_paralysis_constants.js, which must agree
+	// with the figure below.
+	PARALYSIS_MS = 2000
 
 	// An arrow costs a heart wherever it was fired from. There used to be a
 	// point-blank range here that made a close shot fatal outright; it is

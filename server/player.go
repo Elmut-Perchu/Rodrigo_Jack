@@ -43,6 +43,11 @@ type Player struct {
 	FacingRight bool    `json:"facingRight"`
 	Health      int     `json:"health"`
 	IsAlive     bool    `json:"isAlive"`
+	// Held by a spirit until this moment. Zero when free. The clients enforce
+	// the hold on movement themselves - the server has never simulated
+	// movement - but every attack a held fighter claims is refused here, which
+	// is the half of it that could otherwise be cheated (see applyParalysis).
+	ParalysedUntil time.Time `json:"-"`
 	// Spirit gauge, 0..1. Filled entirely on the owner's own machine (see
 	// VSSpectre) and relayed here purely so the other clients can draw it on
 	// their HUD - the server never reads it to decide anything.
@@ -651,6 +656,17 @@ func (p *Player) handlePlayerAttack(msg *Message) {
 		return
 	}
 
+	// A held fighter cannot swing or shoot - but a spirit already in the air
+	// is not something they are doing. It was paid for and launched before
+	// they were caught, it hunts on its own, and the magic blow reported here
+	// is only its arrival. Refusing that would quietly delete a wraith mid
+	// flight whenever two casters caught each other, which is precisely the
+	// exchange the weapon exists to produce.
+	if AttackType(attackType) != AttackMagic && actor.isHeld() {
+		log.Printf("[Combat] Held player %s attempted to attack", actor.Name)
+		return
+	}
+
 	// Create attack data
 	attackData := AttackData{
 		AttackerID:  actor.ID,
@@ -673,6 +689,14 @@ func (p *Player) handlePlayerAttack(msg *Message) {
 
 	// Process attack with server authority
 	ProcessAttack(p.Room, attackData)
+}
+
+// isHeld reports whether a spirit still has hold of this fighter.
+//
+// A held fighter may be shot at, walked into and killed - what they may not do
+// is act. See applyParalysis in game_logic.go.
+func (p *Player) isHeld() bool {
+	return time.Now().Before(p.ParalysedUntil)
 }
 
 // isDroppableMessage returns true if this message type can be safely dropped when buffer is full

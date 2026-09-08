@@ -43,7 +43,13 @@ export function differentSwing(swing, otherSwing) {
  * mid-fight, and one that cannot be drawn as anything but a bar.
  *
  * The damage figures are chosen to keep the old pacing: a sword still needs
- * about eight connections to finish someone, an arrow four, a spirit four.
+ * about eight connections to finish someone, an arrow four.
+ *
+ * There is no figure for a spirit. It deals no damage at all: reaching its
+ * quarry holds them still for a couple of seconds instead, which is a heavier
+ * threat than the two half-hearts it used to cost and one that hands the
+ * opening to whoever is nearby rather than settling the exchange itself. See
+ * constants/vs_paralysis_constants.js.
  */
 export const HEARTS = 4;
 export const HALVES_PER_HEART = 2;
@@ -51,4 +57,3 @@ export const MAX_HEALTH = HEARTS * HALVES_PER_HEART;
 
 export const MELEE_DAMAGE = 1;   // half a heart
 export const ARROW_DAMAGE = 2;   // a whole one
-export const MAGIC_DAMAGE = 2;

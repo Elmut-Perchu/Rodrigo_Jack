@@ -7,6 +7,7 @@ import {
     GROUND_ACCEL_MS,
     AIR_ACCEL_MS
 } from '../../constants/vs_movement_constants.js';
+import { isParalysed } from '../../constants/vs_paralysis_constants.js';
 
 // Jumps allowed after leaving the ground. One extra gives the classic double
 // jump, and it is what makes the arena's tall climbs reachable at all: a
@@ -72,6 +73,23 @@ export class VSInput extends System {
             // shove is a good reason to lose your footing and a bad reason to
             // lose the one input that would end the shove.
             const knocked = property.knockbackUntil && now < property.knockbackUntil;
+
+            // Held by a spirit. Nothing the player presses reaches the
+            // fighter's legs, and what was already pressed is dropped rather
+            // than buffered - two seconds is far longer than the jump buffer
+            // was ever meant to hold anything, and a jump fired the instant
+            // the hold ends is a jump nobody asked for.
+            //
+            // Gravity is deliberately still running (VSGravity does not
+            // consult this): a fighter caught in mid-air falls out of the sky
+            // rather than hanging there, which is both funnier and much
+            // clearer than freezing them in place.
+            if (isParalysed(property)) {
+                velocity.vx = 0;
+                input.vector.v = 0;
+                property.jumpBufferedAt = 0;
+                return;
+            }
 
             // Apply input to velocity
             if (property.movable) {

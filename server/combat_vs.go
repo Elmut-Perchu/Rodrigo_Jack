@@ -90,6 +90,9 @@ func (p *Player) handleArrowSpawn(msg *Message) {
 	if actor == nil || p.Room == nil || !p.Room.IsGameActive || !actor.IsAlive {
 		return
 	}
+	if actor.isHeld() {
+		return // A spirit has hold of them; see applyParalysis
+	}
 
 	arrowID, ok := msg.Data["arrowId"].(string)
 	if !ok || arrowID == "" {

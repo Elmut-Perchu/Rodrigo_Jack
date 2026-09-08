@@ -3,7 +3,19 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The arena is a fixed stage scaled to the window: letting a pinch zoom
+         it as well only ever loses part of the battlefield, and a double-tap
+         zoom in the middle of a fight is a lost round. viewport-fit=cover puts
+         the game under a notch rather than beside it. -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- Added to the home screen, the game gets the whole screen with no bars
+         at all - which is the only way an iPhone will give it up, since Safari
+         has no fullscreen API for anything but a video. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <!-- Cache Control - Force browser to reload JS files on every load (dev mode) -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -497,6 +509,37 @@
             text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
         }
 
+        /* === On a phone ===
+           The class is set from JS rather than a `pointer: coarse` media query
+           so that core/mobile.js stays the single place that decides what a
+           phone is - including its ?touch= override, which is the only way to
+           see this layout on the machine it was written on. */
+
+        /* The keyboard legend names keys that are not there, and it sits
+           exactly where the four buttons go. */
+        body.is-touch .controls-hint {
+            display: none;
+        }
+
+        /* The clock moves out of the bottom centre, which the stick and the
+           buttons now share, up to the gap between the two HUD columns. */
+        body.is-touch .match-info {
+            top: max(6px, env(safe-area-inset-top));
+            bottom: auto;
+            padding: 5px 12px;
+            border-width: 1px;
+        }
+
+        body.is-touch .match-timer { font-size: 10px; }
+        body.is-touch .players-alive { font-size: 7px; margin-top: 3px; }
+
+        /* Above the controls overlay (z-index 1800), or its "Next round"
+           button would be sitting under the joystick's catchment. The
+           game-over screen and the countdown are already higher. */
+        body.is-touch .round-banner {
+            z-index: 1900;
+        }
+
         /* Loading Screen */
         .loading-screen {
             position: fixed;
@@ -595,7 +638,7 @@
                 <div><span class="key">&#9251;</span><b>Space</b> jump &#183; twice for a double</div>
                 <div><span class="key">X</span><b>Sword</b> - keeps chaining while held</div>
                 <div><span class="key">W</span><b>Bow</b> - tap to snap, hold to draw</div>
-                <div><span class="key">C</span><b>Spirit</b> - hold to charge, press to send</div>
+                <div><span class="key">C</span><b>Spirit</b> - hold to charge, press to send; it holds, it does not wound</div>
                 <div><span class="key">Esc</span><b>Pause</b> - volume, restart, quit</div>
             </div>
         </div>
@@ -634,6 +677,14 @@
         import { getPlayerName } from '../core/vs_prefs.js';
         import { pickArena, ARENAS } from '../constants/vs_arenas.js';
         import { withWakeUp } from '../core/ui/wake_overlay.js';
+        import { IS_TOUCH } from '../core/mobile.js';
+        import { TouchControls } from '../core/ui/touch_controls.js';
+        import { enableMobileFullscreen } from '../core/ui/mobile_fullscreen.js';
+
+        // Set before anything is drawn so the touch stylesheet above applies
+        // to the loading screen too, rather than snapping into place once the
+        // match is already up.
+        if (IS_TOUCH) document.body.classList.add('is-touch');
 
         // Parse URL parameters. The lobby only forwards ?room=CODE, so the
         // nickname is recovered from the storage the lobby wrote it to.
@@ -668,6 +719,27 @@
         // Initialize VS game
         let gameInstance = null;
         let pauseMenu = null;
+        let touchControls = null;
+
+        /**
+         * The stick and the four buttons, on a phone.
+         *
+         * Mounted here rather than inside GameVSSimple because the overlay is
+         * part of this page's furniture, like the pause menu and the
+         * scoreboard - and because Adventure mounts its own from game.js. The
+         * overlay itself is shared; what differs is who puts it on screen.
+         *
+         * They go up as soon as there is an arena to fight in, including the
+         * offline sandbox, and stay up: unlike Adventure there is no menu to
+         * step aside for, and the two overlays that do appear over a match -
+         * the round banner and the game-over screen - are stacked above them.
+         */
+        function mountTouchControls() {
+            if (!IS_TOUCH || touchControls) return;
+            touchControls = new TouchControls({ mode: 'vs' }).mount();
+            touchControls.setVisible(true);
+            enableMobileFullscreen();
+        }
 
         // Where "play it again" goes. Against the computer that is a fresh
         // match on the same difficulty; online there is nothing this client
@@ -708,6 +780,7 @@
 
                 // Hide loading screen
                 document.getElementById('loading-screen').style.display = 'none';
+                mountTouchControls();
 
                 // Esc or P: pause, volume, rematch, leave. Built once the
                 // match exists because it needs to know whether it is allowed
@@ -731,6 +804,7 @@
                     gameInstance.createLocalPlayerEntity(0);
                     gameInstance.spawnApplied = true;
                     document.getElementById('loading-screen').style.display = 'none';
+                    mountTouchControls();
                 } else {
                     alert('Failed to initialize game: ' + error.message);
                 }
@@ -769,6 +843,7 @@
         // Cleanup on unload
         window.addEventListener('beforeunload', () => {
             if (pauseMenu) pauseMenu.dispose();
+            if (touchControls) touchControls.destroy();
             if (gameInstance && gameInstance.cleanup) {
                 gameInstance.cleanup();
             }

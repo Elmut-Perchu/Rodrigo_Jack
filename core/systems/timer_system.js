@@ -1,5 +1,6 @@
 // core/systems/timer_system.js
 import { System } from './system.js';
+import { ui } from '../mobile.js';
 
 export class TimerSystem extends System {
     constructor() {
@@ -10,14 +11,16 @@ export class TimerSystem extends System {
     createTimerDisplay() {
         const display = document.createElement('div');
         display.style.position = 'fixed';
-        display.style.top = '20px';
+        display.style.top = `${ui(20)}px`;
         display.style.left = '50%';
         display.style.transform = 'translateX(-50%)';
         display.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
         display.style.color = '#FFF';
-        display.style.padding = '10px 20px';
-        display.style.borderRadius = '10px';
-        display.style.fontSize = '24px';
+        display.style.padding = `${ui(10)}px ${ui(20)}px`;
+        display.style.borderRadius = `${ui(10)}px`;
+        // Shrunk with the rest of the counters on a phone: a clock drawn at
+        // desktop size next to hearts that are not would read as a fault.
+        display.style.fontSize = `${ui(24)}px`;
         display.style.fontFamily = "'Press Start 2P', sans-serif";
         display.style.zIndex = '1000';
         document.body.appendChild(display);

@@ -30,6 +30,9 @@ import { ArrowPhysicsSystem } from './core/systems/arrow_physics_system.js';
 import { ArrowCollisionSystem } from './core/systems/arrow_collision_system.js';
 import { ArrowImpactSystem } from './core/systems/arrow_impact_system.js';
 import { ArrowPickupSystem } from './core/systems/arrow_pickup_system.js';
+import { IS_TOUCH } from './core/mobile.js';
+import { TouchControls } from './core/ui/touch_controls.js';
+import { enableMobileFullscreen } from './core/ui/mobile_fullscreen.js';
 
 export class Game {
     constructor(container, mode = 'adventure') {
@@ -66,6 +69,23 @@ export class Game {
             this.mainMenu = createMainMenu(this, this.container);
             // Ajouter un bouton pour sauter l'intro
             this.addSkipIntroButton();
+        }
+
+        /**
+         * A stick and four buttons, on a phone, in Adventure only.
+         *
+         * VS builds its own set from its page (views/vs_game.html): the two
+         * modes are separate game classes and neither should be reaching into
+         * the other's screen. What they share is the overlay itself, which
+         * speaks keyboard to whichever Input component is listening - so the
+         * double jump, the sword chain and the bow's draw all behave here
+         * exactly as they do under real keys.
+         */
+        this.touchControls = null;
+        if (IS_TOUCH && this.mode !== 'vs') {
+            document.body.classList.add('is-touch');
+            this.touchControls = new TouchControls({ mode: 'adventure' }).mount();
+            enableMobileFullscreen();
         }
 
         window.addEventListener('keydown', (e) => {
@@ -541,6 +561,21 @@ export class Game {
         }
     }
 
+    /**
+     * Shows the touch controls only while there is a character to drive.
+     *
+     * A menu, a cutscene or a pause means the stick and buttons are in the way
+     * of what is actually on screen - and setVisible drops whatever they were
+     * holding, so a level entered with a direction pushed does not start with
+     * the player already walking into a wall.
+     */
+    syncTouchControls() {
+        if (!this.touchControls) return;
+
+        const playing = !this.paused && !(this.cutsceneSystem && this.cutsceneSystem.isPlaying);
+        this.touchControls.setVisible(playing);
+    }
+
     loop(currentTime) {
         // Utiliser bind pour préserver le contexte
         requestAnimationFrame(this.loop.bind(this));
@@ -548,6 +583,11 @@ export class Game {
         let deltaTime = (currentTime - this.lastTime) / 1000;
         if (deltaTime > 0.1) deltaTime = 0.1;
         this.lastTime = currentTime;
+
+        // Before the pause check below returns: the controls have to come
+        // down when the game stops, which is precisely when this method stops
+        // doing anything else.
+        this.syncTouchControls();
 
         // Si on est en pause mais qu'une cinématique est en cours,
         // on doit quand même mettre à jour le système de cinématique

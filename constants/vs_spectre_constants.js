@@ -11,6 +11,11 @@
  * The numbers below are what make that trade honest: long enough to channel
  * that an opponent watching you do it has time to close the distance, slow
  * enough on foot while channelling that you cannot do it on the run.
+ *
+ * What it buys is symmetrical, and deliberately so: the wraith deals no damage
+ * and cannot kill, but the fighter it reaches is held still for two seconds -
+ * roughly what the caster spent standing still to summon it. See
+ * constants/vs_paralysis_constants.js.
  */
 export const VS_SPECTRE = {
     // Seconds of channelling to fill an empty gauge.
@@ -34,7 +39,7 @@ export const VS_SPECTRE = {
     LIFETIME: 5200,
 
     // Distance from the spectre's centre to a fighter's body centre that
-    // counts as contact.
+    // counts as contact, and where the hold begins.
     HIT_RADIUS: 52,
 
     // Where it appears, relative to the caster.

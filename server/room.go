@@ -706,6 +706,7 @@ func (r *Room) checkGameReady() {
 			player.Health = MAX_HEALTH
 			player.IsAlive = true
 			player.Quiver = StartingArrows
+			player.ParalysedUntil = time.Time{}
 		}
 		r.MatchStarted = true
 
@@ -1043,6 +1044,8 @@ func (r *Room) resetForNextRound() {
 		player.Health = MAX_HEALTH
 		player.IsAlive = true
 		player.Quiver = StartingArrows
+		// A round is not something to start already held by last round's spirit.
+		player.ParalysedUntil = time.Time{}
 		revivals = append(revivals, revival{player.ID, player.X, player.Y, player.Health})
 		revived = append(revived, player)
 	}

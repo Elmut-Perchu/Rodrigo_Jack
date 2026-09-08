@@ -1,5 +1,6 @@
 // core/systems/collectible_system.js
 import { System } from './system.js';
+import { ui } from '../mobile.js';
 
 
 export class Collectible extends System {
@@ -14,39 +15,44 @@ export class Collectible extends System {
         this.currentMap = 'map1';
         this.finalLevel = 'map4';
 
-        // Créer le conteneur d'UI
+        // Créer le conteneur d'UI.
+        //
+        // Every measurement here goes through ui(), which returns it unchanged
+        // on a desktop and shrinks it on a phone (see core/mobile.js). Score,
+        // coins and the progress bar are read between fights; at full size
+        // they take a corner of a landscape phone that the game itself needs.
         this.uiContainer = document.createElement('div');
         this.uiContainer.style.position = 'fixed';
-        this.uiContainer.style.top = '20px';
-        this.uiContainer.style.right = '20px';
+        this.uiContainer.style.top = `${ui(20)}px`;
+        this.uiContainer.style.right = `${ui(20)}px`;
         this.uiContainer.style.display = 'flex';
         this.uiContainer.style.flexDirection = 'column';
-        this.uiContainer.style.gap = '10px';
-        this.uiContainer.style.padding = '15px';
+        this.uiContainer.style.gap = `${ui(10)}px`;
+        this.uiContainer.style.padding = `${ui(15)}px`;
         this.uiContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        this.uiContainer.style.borderRadius = '10px';
+        this.uiContainer.style.borderRadius = `${ui(10)}px`;
         this.uiContainer.style.zIndex = '1000';
 
         // Affichage du score
         this.scoreDisplay = document.createElement('div');
         this.scoreDisplay.style.color = '#FFD700'; // Couleur dorée
-        this.scoreDisplay.style.fontSize = '24px';
+        this.scoreDisplay.style.fontSize = `${ui(24)}px`;
         this.scoreDisplay.style.fontFamily = 'Press Start 2P, sans-serif';
         this.scoreDisplay.style.textShadow = '2px 2px 2px rgba(0,0,0,0.5)';
 
         // Affichage des pièces
         this.coinsDisplay = document.createElement('div');
         this.coinsDisplay.style.color = '#FFA500'; // Couleur orange
-        this.coinsDisplay.style.fontSize = '20px';
+        this.coinsDisplay.style.fontSize = `${ui(20)}px`;
         this.coinsDisplay.style.fontFamily = 'Press Start 2P, sans-serif';
         this.coinsDisplay.style.textShadow = '2px 2px 2px rgba(0,0,0,0.5)';
 
         // Barre de progression
         this.progressContainer = document.createElement('div');
-        this.progressContainer.style.width = '150px';
-        this.progressContainer.style.height = '20px';
+        this.progressContainer.style.width = `${ui(150)}px`;
+        this.progressContainer.style.height = `${ui(20)}px`;
         this.progressContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-        this.progressContainer.style.borderRadius = '10px';
+        this.progressContainer.style.borderRadius = `${ui(10)}px`;
         this.progressContainer.style.overflow = 'hidden';
 
         this.progressBar = document.createElement('div');

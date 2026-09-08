@@ -1,6 +1,7 @@
 // core/systems_vs/vs_spectre_system.js - The spirit gauge, and what it summons
 import { System } from '../systems/system.js';
 import { VS_SPECTRE } from '../../constants/vs_spectre_constants.js';
+import { isParalysed } from '../../constants/vs_paralysis_constants.js';
 
 // Sprite is 110x110 with the body centred at (x+55, y+79); the spectre's own
 // frame is square, so its centre is simply half its size.
@@ -87,9 +88,10 @@ export class VSSpectre extends System {
 
         const trigger = this.triggerFor(entity);
 
-        // Dead, or held for the countdown: either way the spirit stays home
-        // (see GameVSSimple.freezeFighters).
-        if (property.isAlive === false || property.movable === false) {
+        // Dead, held for the countdown, or held by somebody else's spirit:
+        // either way this one stays home. The gauge keeps whatever it had -
+        // being paralysed costs the caster their two seconds, not their work.
+        if (property.isAlive === false || property.movable === false || isParalysed(property)) {
             state.channeling = false;
             trigger.magic = false;
             return;

@@ -1,6 +1,7 @@
 // core/systems/health_system.js
 
 import { System } from './system.js';
+import { ui } from '../mobile.js';
 
 // core/systems/health_system.js
 export class Health extends System {
@@ -11,13 +12,21 @@ export class Health extends System {
       this.updatePlayerLives(this.prevLivesPlayer);
     }
 
+    /**
+     * Three hearts in the top-left corner.
+     *
+     * Drawn smaller on a phone (see core/mobile.js): the lives are reference
+     * information, read between fights rather than during one, and at desktop
+     * size they cover the corner of the screen that a landscape phone can
+     * least afford to lose.
+     */
     createPlayerLivesDisplay() {
         const display = document.createElement('div');
         display.style.position = 'fixed';
-        display.style.top = '20px';
-        display.style.left = '20px';
+        display.style.top = `${ui(20)}px`;
+        display.style.left = `${ui(20)}px`;
         display.style.display = 'flex';
-        display.style.gap = '10px';
+        display.style.gap = `${ui(10)}px`;
         display.style.zIndex = '1000';
         document.body.appendChild(display);
         return display;
@@ -42,8 +51,8 @@ export class Health extends System {
       this.livesDisplay.innerHTML = '';
       for (let i = 0; i < 3; i++) {
         const heart = document.createElement('div');
-        heart.style.width = '20px';
-        heart.style.height = '20px';
+        heart.style.width = `${ui(20)}px`;
+        heart.style.height = `${ui(20)}px`;
         heart.style.backgroundColor = i < health ? 'red' : '#444';
         heart.style.borderRadius = '50%';
         this.livesDisplay.appendChild(heart);

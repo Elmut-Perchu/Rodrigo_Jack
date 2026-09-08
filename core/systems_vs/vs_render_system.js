@@ -1,5 +1,6 @@
 // core/systems_vs/vs_render_system.js - VS Mode Render System
 import { System } from '../systems/system.js';
+import { isParalysed } from '../../constants/vs_paralysis_constants.js';
 
 export class VSRender extends System {
     constructor(game) {
@@ -81,6 +82,17 @@ export class VSRender extends System {
         const property = entity.getComponent('property');
         const input = entity.getComponent('input');
 
+        // A spirit's hold outranks everything else on screen, a swing that was
+        // already playing included - the blow being interrupted is precisely
+        // what the hold is for. Cleared rather than waited out, so the sword
+        // does not resume its arc the moment the fighter comes back.
+        if (isParalysed(property)) {
+            entity._attackHoldUntil = 0;
+            if (animation.currentState !== 'paralysed') animation.setState('paralysed');
+            this.drawState(animation, visual, deltaTime);
+            return;
+        }
+
         // A swing relayed by the server (see handleRemoteAttack) owns the
         // animation for a moment; otherwise the velocity-derived state below
         // would overwrite it on the very next frame and nothing would show.
@@ -133,8 +145,17 @@ export class VSRender extends System {
 
         if (animation.currentState !== state) animation.setState(state);
 
-        // The spritesheet loads asynchronously: paint the first frame as soon
-        // as it is decoded, then advance frames on the animation clock.
+        this.drawState(animation, visual, deltaTime);
+    }
+
+    /**
+     * Paints the current state, waiting out the spritesheet if it is still
+     * loading.
+     *
+     * The sheet is decoded asynchronously, so the first frame is painted as
+     * soon as it is there and the clock only starts running afterwards.
+     */
+    drawState(animation, visual, deltaTime) {
         if (!animation.initialized) {
             if (!animation.spriteSheet || !animation.spriteSheet.complete) return;
             animation.initialized = true;

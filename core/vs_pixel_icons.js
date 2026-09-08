@@ -121,3 +121,86 @@ export function trophyIcon(colour) {
 export function reticleIcon(colour) {
     return pixelSvg(RETICLE, colour);
 }
+
+/**
+ * The four weapons, as they appear on a phone's buttons.
+ *
+ * Drawn here with the hearts and the quiver rather than in the touch overlay,
+ * because they are the same kind of thing solved the same way: read at forty
+ * pixels across over a moving sprite, a pixel grid holds its edges where an
+ * emoji glyph would neither match the artwork nor render the same on two
+ * phones. Larger grids than the HUD's icons - a button is drawn a good deal
+ * bigger than a heart - but the technique is identical.
+ */
+
+/** A blade at the diagonal, hilt low, the way the sprite holds it. */
+const SWORD = [
+    '.........##',
+    '........###',
+    '.......###.',
+    '......###..',
+    '.....###...',
+    '....###....',
+    '...###.....',
+    '..###......',
+    '#.###......',
+    '####.......',
+    '##.........'
+];
+
+/** A stave, its string, and an arrow on the string flying right. */
+const BOW = [
+    '..###......',
+    '.#.#.#.....',
+    '#..#..#....',
+    '#..#...#...',
+    '#..#....#..',
+    '#..########',
+    '#..#....#..',
+    '#..#...#...',
+    '#..#..#....',
+    '.#.#.#.....',
+    '..###......'
+];
+
+/** A wraith: a round head and a ragged hem, which is all a spirit needs. */
+const GHOST = [
+    '..####..',
+    '.######.',
+    '########',
+    '##.##.##',
+    '##.##.##',
+    '########',
+    '########',
+    '########',
+    '#.#..#.#'
+];
+
+/** An arrow up off a floor line: leaving the ground, not merely "up". */
+const JUMP = [
+    '...##...',
+    '..####..',
+    '.######.',
+    '########',
+    '.#.##.#.',
+    '...##...',
+    '........',
+    '########',
+    '########'
+];
+
+export function swordIcon(colour) {
+    return pixelSvg(SWORD, colour);
+}
+
+export function bowIcon(colour) {
+    return pixelSvg(BOW, colour);
+}
+
+export function ghostIcon(colour) {
+    return pixelSvg(GHOST, colour);
+}
+
+export function jumpIcon(colour) {
+    return pixelSvg(JUMP, colour);
+}

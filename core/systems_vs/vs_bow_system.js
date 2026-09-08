@@ -4,6 +4,7 @@ import { createArrow } from '../../create/arrow_create.js';
 import { ARROW_CONSTANTS } from '../../constants/arrow_constants.js';
 import { VS_BOW, shotPower } from '../../constants/vs_bow_constants.js';
 import { SWING_CYCLE, COMBO_RESET_MS } from '../../constants/vs_combat_constants.js';
+import { isParalysed } from '../../constants/vs_paralysis_constants.js';
 
 // How long a sword keeps swatting arrows out of the air after it is swung.
 const BLADE_ACTIVE_MS = 200;
@@ -57,8 +58,9 @@ export class VSBow extends System {
             // A dead fighter keeps its entity around but stops acting - and so
             // does a fighter held for the "3, 2, 1" beats, who would otherwise
             // be shooting at opponents pinned in place and unable to dodge
-            // (see GameVSSimple.freezeFighters).
-            if (property.isAlive === false || property.movable === false) {
+            // (see GameVSSimple.freezeFighters), and one held by a spirit,
+            // for whom losing the weapons is the whole of the punishment.
+            if (property.isAlive === false || property.movable === false || isParalysed(property)) {
                 trigger.bow = false;
                 trigger.melee = false;
                 trigger.tapped = false;

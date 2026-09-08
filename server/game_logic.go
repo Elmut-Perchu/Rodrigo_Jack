@@ -58,11 +58,15 @@ const (
 // as a second, silent set of numbers: every blow in an online match was
 // instantly fatal against a health of 8, while offline matches (which read the
 // JavaScript constants) played correctly. One definition now, in constants.go.
+//
+// There is no magic figure here: a spirit deals no damage. See applyParalysis.
 const (
 	MeleeDamage = MELEE_DAMAGE
 	ArrowDamage = ARROW_DAMAGE
-	MagicDamage = MAGIC_DAMAGE
 )
+
+// ParalysisDuration is how long a spirit holds the fighter it reaches.
+const ParalysisDuration = PARALYSIS_MS * time.Millisecond
 
 // ProcessAttack handles combat logic with server authority
 func ProcessAttack(room *Room, attackData AttackData) {
@@ -201,6 +205,13 @@ func isMagicHit(attackData AttackData, victim *Player, distance float64) bool {
 
 // applyDamage applies damage to victim and broadcasts result
 func applyDamage(room *Room, attacker *Player, victim *Player, attackType AttackType, damageMultiplier float64) {
+	// A spirit is not a wound. It takes two seconds of movement instead, and
+	// no multiplier applies: a damage power-up cannot make a hold longer.
+	if attackType == AttackMagic {
+		applyParalysis(room, attacker, victim)
+		return
+	}
+
 	// Calculate base damage
 	baseDamage := 0
 	switch attackType {
@@ -208,8 +219,6 @@ func applyDamage(room *Room, attacker *Player, victim *Player, attackType Attack
 		baseDamage = MeleeDamage
 	case AttackArrow:
 		baseDamage = ArrowDamage
-	case AttackMagic:
-		baseDamage = MagicDamage
 	}
 
 	// Apply damage multiplier from power-ups
@@ -218,6 +227,31 @@ func applyDamage(room *Room, attacker *Player, victim *Player, attackType Attack
 	}
 
 	applyDamageAmount(room, attacker, victim, attackType, int(float64(baseDamage)*damageMultiplier))
+}
+
+// applyParalysis holds a fighter still where a blow would have wounded them.
+//
+// Refreshed rather than stacked: a second spirit landing on someone already
+// held buys another two seconds from now, not four in total. Stacking would
+// let two casters take a third player out of the match entirely, which is
+// exactly the thing a weapon that cannot kill is not supposed to be able to do.
+//
+// The clients enforce the hold themselves - VSInput stops driving the fighter,
+// VSBow and VSSpectre stop reading their weapons - because the server does not
+// simulate movement in the first place; it validates it. What the server does
+// own is the part that can be cheated for advantage: a held fighter's attacks
+// are refused here, in handlePlayerAttack, handleArrowSpawn and
+// handleSpectreSpawn, whatever their client claims.
+func applyParalysis(room *Room, attacker *Player, victim *Player) {
+	victim.ParalysedUntil = time.Now().Add(ParalysisDuration)
+
+	log.Printf("[Combat] %s held %s for %v", attacker.Name, victim.Name, ParalysisDuration)
+
+	room.Broadcast("player_paralysed", map[string]interface{}{
+		"attackerId": attacker.ID,
+		"victimId":   victim.ID,
+		"durationMs": ParalysisDuration.Milliseconds(),
+	}, nil)
 }
 
 // applyDamageAmount lands a blow worth a given number of half-hearts.
@@ -260,6 +294,7 @@ func handlePlayerDeath(room *Room, victim *Player, attacker *Player) {
 	}
 
 	victim.IsAlive = false
+	victim.ParalysedUntil = time.Time{}
 
 	log.Printf("[Combat] %s killed by %s", victim.Name, attacker.Name)
 

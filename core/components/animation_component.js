@@ -1,5 +1,6 @@
 // core/components/animation_component.js
 import { Component } from './component.js';
+import { PARALYSIS_FRAMES, PARALYSIS_FPS } from '../../constants/vs_paralysis_constants.js';
 
 export class Animation extends Component {
     constructor() {
@@ -148,6 +149,15 @@ export class PlayerAnimation extends Animation {
             chockGround: {
                 frames: [78, 79, 80, 81],
                 speed: 15,
+            },
+            // Held by a spirit: the first three frames of the reeling row,
+            // looped for as long as the hold lasts. Shares its opening with
+            // chockGround because it is the same body losing control - what
+            // differs is that this one never reaches the recovery.
+            // See constants/vs_paralysis_constants.js.
+            paralysed: {
+                frames: PARALYSIS_FRAMES,
+                speed: PARALYSIS_FPS,
             },
             chockDeath: {
                 frames: [91, 92, 93, 94, 95, 96, 97],

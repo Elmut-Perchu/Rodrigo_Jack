@@ -27,6 +27,7 @@ import { createBot } from './create/bot_create.js';
 import { createSpectre } from './create/spectre_create.js';
 import { differentSwing, HEARTS, HALVES_PER_HEART, MAX_HEALTH } from './constants/vs_combat_constants.js';
 import { VS_SPECTRE } from './constants/vs_spectre_constants.js';
+import { PARALYSIS_MS } from './constants/vs_paralysis_constants.js';
 import { heartIcon, trophyIcon } from './core/vs_pixel_icons.js';
 
 // Drawn once and reused by every card: the same two images for all four
@@ -470,6 +471,9 @@ export class GameVSSimple {
                 break;
             case 'parry':
                 this.handleParry(data);
+                break;
+            case 'player_paralysed':
+                this.handlePlayerParalysed(data);
                 break;
             case 'player_death':
                 this.handlePlayerDeath(data);
@@ -1043,6 +1047,42 @@ export class GameVSSimple {
     }
 
     /**
+     * A spirit reached its quarry: they are held where they stand.
+     *
+     * Applied on every client, not just the victim's, because everyone has to
+     * see the same fighter stop - and because the victim's own machine is the
+     * one simulating them, so it is the one that has to stop driving them. The
+     * hold is a timestamp on the property rather than a timer: the systems
+     * that respect it (VSInput, VSBow, VSSpectre, VSRender) simply ask whether
+     * it has passed, so there is no callback to cancel when the round ends,
+     * the fighter dies, or a second spirit lands on them.
+     *
+     * A second spirit refreshes the clock rather than stacking with it.
+     */
+    handlePlayerParalysed(data) {
+        const entity = this.entityForPlayer(data.victimId);
+        if (!entity) return;
+
+        const property = entity.getComponent('property');
+        if (!property) return;
+
+        property.paralysedUntil = performance.now() + (data.durationMs || PARALYSIS_MS);
+
+        // Stopped dead rather than left to slide: momentum carried through a
+        // hold reads as the fighter still walking, which is the one thing the
+        // spirit is meant to have taken away.
+        const velocity = entity.getComponent('velocity');
+        if (velocity) velocity.vx = 0;
+
+        this.flashHit(entity);
+
+        if (data.victimId === this.localPlayerId) {
+            this.audio?.playHurt();
+            console.log('👻 [GameVSSimple] Held by a spirit');
+        }
+    }
+
+    /**
      * Two blades met inside the parry window: nobody takes damage, both
      * fighters get sparks and a metallic ring.
      *
@@ -1100,6 +1140,10 @@ export class GameVSSimple {
             if (property) {
                 property.isAlive = false;
                 property.movable = false; // VSInput stops driving them
+                // Otherwise a fighter killed while held keeps the stun loop,
+                // which VSRender ranks above everything - including the death
+                // it is meant to be showing.
+                property.paralysedUntil = 0;
             }
 
             const animation = entity.getComponent('animation');
@@ -1121,6 +1165,8 @@ export class GameVSSimple {
         if (property) {
             property.isAlive = true;
             property.movable = true;
+            // A round is not something to start already held.
+            property.paralysedUntil = 0;
         }
 
         const health = entity.getComponent('health');

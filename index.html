@@ -3,7 +3,19 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- A platformer played with a thumb on the screen: a pinch or a
+         double-tap zoom mid-jump only ever loses the platform being aimed at.
+         viewport-fit=cover puts the world under a notch rather than beside
+         it. -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- Added to the home screen, the game gets the whole screen with no bars
+         at all - the only way an iPhone will give them up, since Safari has no
+         fullscreen API for anything but a video. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <!-- Cache Control - Force browser to reload JS files on every load (dev mode) -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />

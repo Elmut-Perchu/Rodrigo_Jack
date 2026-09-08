@@ -2,9 +2,9 @@
 import {
     MELEE_DAMAGE,
     ARROW_DAMAGE,
-    MAGIC_DAMAGE,
     MAX_HEALTH
 } from '../../constants/vs_combat_constants.js';
+import { PARALYSIS_MS } from '../../constants/vs_paralysis_constants.js';
 
 /**
  * Plays the part of the Go server for a match against the computer.
@@ -272,6 +272,13 @@ export class VSLocalArbiter {
             facingRight: data.facingRight !== false
         };
 
+        // A held fighter cannot swing or shoot - but a spirit already in the
+        // air is not something they are doing. It was paid for and launched
+        // before they were caught and it hunts on its own; this is only the
+        // report of its arrival (server/player.go handlePlayerAttack keeps the
+        // same exemption).
+        if (attack.attackType !== 'magic' && this.held(fighter)) return;
+
         // The swing is always shown at once; only its outcome waits.
         this.emit('player_attack', attack);
 
@@ -360,16 +367,50 @@ export class VSLocalArbiter {
         return victims;
     }
 
+    /** True while this fighter is held by a spirit. */
+    held(fighter) {
+        return performance.now() < (fighter.paralysedUntil || 0);
+    }
+
+    /**
+     * A spirit holds its quarry instead of wounding them.
+     *
+     * Mirrors applyParalysis in server/game_logic.go: no health changes hands,
+     * and the clock is refreshed rather than stacked, so a second spirit buys
+     * another two seconds rather than four. The referee keeps its own copy of
+     * the deadline because it is the referee that has to refuse the held
+     * fighter's swings - the entities' own copy lives on their property
+     * component and is set by the message this emits.
+     */
+    applyParalysis(attackerId, victimId) {
+        const victim = this.fighters.get(victimId);
+        if (!victim || !victim.isAlive) return;
+
+        victim.paralysedUntil = performance.now() + PARALYSIS_MS;
+
+        this.emit('player_paralysed', {
+            attackerId,
+            victimId,
+            durationMs: PARALYSIS_MS
+        });
+    }
+
     applyDamage(attackerId, victimId, attackType, override) {
         const victim = this.fighters.get(victimId);
         const attacker = this.fighters.get(attackerId);
         if (!victim || !attacker || !victim.isAlive) return;
 
+        // A spirit takes two seconds of movement, not two half-hearts. It is
+        // the one weapon in the arena that cannot kill on its own.
+        if (attackType === 'magic') {
+            this.applyParalysis(attackerId, victimId);
+            return;
+        }
+
         // The override is for blows that are not worth a number - a bow put
         // against someone and loosed. Left undefined, the weapon decides.
         const damage = override !== undefined ? override
             : attackType === 'arrow' ? ARROW_DAMAGE
-            : attackType === 'magic' ? MAGIC_DAMAGE
             : MELEE_DAMAGE;
 
         victim.health = Math.max(0, victim.health - damage);
@@ -517,6 +558,7 @@ export class VSLocalArbiter {
             const spawn = this.game.getSpawnPoint(index);
             fighter.health = MAX_HEALTH;
             fighter.isAlive = true;
+            fighter.paralysedUntil = 0;
             fighter.quiver = STARTING_ARROWS;
             this.sendQuiver(playerId);
             this.emit('player_respawn', {
@@ -547,7 +589,7 @@ export class VSLocalArbiter {
 
     handleArrowSpawn(ownerId, data) {
         const fighter = this.fighters.get(ownerId);
-        if (!fighter || !fighter.isAlive) return;
+        if (!fighter || !fighter.isAlive || this.held(fighter)) return;
 
         const arrowId = data.arrowId;
         if (!arrowId || this.arrows.has(arrowId)) return;
@@ -734,7 +776,7 @@ export class VSLocalArbiter {
      */
     handleSpectreSpawn(ownerId, data) {
         const fighter = this.fighters.get(ownerId);
-        if (!fighter || !fighter.isAlive) return;
+        if (!fighter || !fighter.isAlive || this.held(fighter)) return;
 
         this.emit('spectre_spawned', {
             spectreId: data.spectreId,

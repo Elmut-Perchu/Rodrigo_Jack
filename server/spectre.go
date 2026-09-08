@@ -5,12 +5,17 @@ import "log"
 /*
 Spirits summoned from a full gauge.
 
-The server relays them and nothing more. A spectre carries no damage by
-existing: it is a thing that flies, and when it reaches someone the caster's
-client reports an ordinary magic blow through player_attack, which goes
-through the same arbitration, the same friendly-fire rule and the same death
-handling as every other attack in the arena. There is deliberately no second
-set of combat rules here to fall out of step with the first.
+The server relays them and nothing more. A spectre does nothing by existing:
+it is a thing that flies, and when it reaches someone the caster's client
+reports an ordinary magic blow through player_attack, which goes through the
+same arbitration and the same friendly-fire rule as every other attack in the
+arena. There is deliberately no second set of combat rules here to fall out of
+step with the first.
+
+What that blow does is where a spirit differs from a sword or an arrow: it
+takes no health at all, and holds its quarry still for a couple of seconds
+instead (see applyParalysis in game_logic.go). So a spectre never kills - it
+hands the opening to whoever is standing nearby.
 
 That leaves this file with one job: making sure everybody sees the same spirit
 appear and the same spirit go away. Flight is simulated on every client from
@@ -27,6 +32,9 @@ func (p *Player) handleSpectreSpawn(msg *Message) {
 	actor := p.actor(msg)
 	if actor == nil || p.Room == nil || !p.Room.IsGameActive || !actor.IsAlive {
 		return
+	}
+	if actor.isHeld() {
+		return // Held by someone else's spirit; see applyParalysis
 	}
 
 	spectreID, ok := msg.Data["spectreId"].(string)
