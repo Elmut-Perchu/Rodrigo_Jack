@@ -275,6 +275,7 @@
     </div>
 
     <script type="module">
+        import { getPlayerName, setPlayerName, isValidName } from '../core/vs_prefs.js';
         const API_URL = 'http://localhost:8080/api/rooms';
 
         const elements = {
@@ -350,6 +351,9 @@
             return div;
         }
 
+        // Start with the name we already know, so it never has to be retyped.
+        if (elements.nicknameCreate) elements.nicknameCreate.value = getPlayerName();
+
         // Validate nickname
         function validateNickname(nickname) {
             if (!nickname || nickname.trim().length < 3 || nickname.trim().length > 15) {
@@ -376,8 +380,7 @@
                 return;
             }
 
-            // Store nickname and flag as host
-            sessionStorage.setItem('playerNickname', nickname);
+            setPlayerName(nickname);
             sessionStorage.setItem('isHost', 'true');
 
             // Redirect to lobby (lobby will create room)
@@ -386,15 +389,20 @@
 
         // Join existing room
         function joinRoom(roomCode) {
-            const nickname = prompt('Enter your nickname (3-15 characters):');
+            // Whoever you already said you were. Only somebody who has never
+            // given a name is asked for one - this used to prompt on every
+            // single join, including the tenth.
+            let nickname = getPlayerName();
 
-            if (!nickname || nickname.trim().length < 3 || nickname.trim().length > 15) {
-                showError('Invalid nickname! Must be 3-15 characters');
-                return;
+            if (!nickname) {
+                nickname = (prompt('Enter your nickname (3-15 characters):') || '').trim();
+                if (!isValidName(nickname)) {
+                    showError('Invalid nickname! Must be 3-15 characters');
+                    return;
+                }
             }
 
-            // Store nickname, room code, and flag as guest
-            sessionStorage.setItem('playerNickname', nickname.trim());
+            setPlayerName(nickname);
             sessionStorage.setItem('roomCode', roomCode);
             sessionStorage.setItem('isHost', 'false');
 

@@ -10,18 +10,20 @@ import { createWebSocketBridge } from './websocket-state-bridge.js';
 import { PlayerListComponent } from './components/lobby/PlayerListComponent.js';
 import { ChatBoxComponent } from './components/lobby/ChatBoxComponent.js';
 import { RoomInfoComponent } from './components/lobby/RoomInfoComponent.js';
+import { getPlayerName } from '../vs_prefs.js';
 
 /**
  * Initialize lobby application
  */
 export async function initializeLobby() {
-  // Get data from sessionStorage (set by vs_menu.html)
+  // Where we came from (set by vs_menu.html / vs_room_browser.html)
   const isHost = sessionStorage.getItem('isHost') === 'true';
-  const playerName = sessionStorage.getItem('playerNickname') || 'Player';
+  const playerName = getPlayerName() || 'Player';
   const roomCode = isHost ? generateRoomCode() : sessionStorage.getItem('roomCode');
 
-  // Clear sessionStorage
-  sessionStorage.removeItem('playerNickname');
+  // Clear only what belonged to this one trip through the menu. The nickname
+  // is deliberately left alone: it used to be deleted here, which is why the
+  // player was asked for it again on the very next screen.
   sessionStorage.removeItem('roomCode');
   sessionStorage.removeItem('isHost');
 

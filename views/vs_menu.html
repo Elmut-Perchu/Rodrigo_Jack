@@ -227,6 +227,43 @@
             font-size: 0.7rem;
             letter-spacing: 2px;
         }
+        .identity {
+            margin-bottom: 22px;
+            font-size: 10px;
+            color: #95a5a6;
+            line-height: 2;
+        }
+
+        .identity b {
+            color: #f39c12;
+        }
+
+        .identity input {
+            font-family: 'Press Start 2P', sans-serif;
+            font-size: 10px;
+            padding: 8px;
+            width: 150px;
+            border: 2px solid #7f8c8d;
+            border-radius: 4px;
+            background: #1c2833;
+            color: #ecf0f1;
+        }
+
+        .identity-btn {
+            font-family: 'Press Start 2P', sans-serif;
+            font-size: 8px;
+            padding: 6px 10px;
+            margin-left: 8px;
+            border: none;
+            border-radius: 4px;
+            background-color: #7f8c8d;
+            color: white;
+            cursor: pointer;
+        }
+
+        .identity-btn:hover {
+            background-color: #95a5a6;
+        }
     </style>
 </head>
 
@@ -240,6 +277,19 @@
 
         <!-- Initial Menu -->
         <div id="initial-menu">
+            <!-- Introduce yourself once. Every screen below reads this, and it
+                 outlives the tab, so it is never asked for twice. -->
+            <div class="identity" id="identity" hidden>
+                <span id="identity-view">
+                    Playing as <b id="identity-name"></b>
+                    <button type="button" class="identity-btn" id="btn-change-name">change</button>
+                </span>
+                <span id="identity-edit" hidden>
+                    <input type="text" id="identity-input" maxlength="15" placeholder="Nickname...">
+                    <button type="button" class="identity-btn" id="btn-save-name">OK</button>
+                </span>
+            </div>
+
             <div class="btn-group">
                 <button class="btn btn-create" id="btn-create">Create Room</button>
                 <button class="btn btn-join" id="btn-join">Join Room</button>
@@ -294,6 +344,7 @@
     </div>
 
     <script type="module">
+        import { getPlayerName, setPlayerName, isValidName } from '../core/vs_prefs.js';
         import { BOT_LEVELS, BOT_LEVEL_ORDER, DEFAULT_BOT_LEVEL } from '../constants/bot_constants.js';
 
         const initialMenu = document.getElementById('initial-menu');
@@ -339,7 +390,9 @@
         btnCancelCreate.addEventListener('click', () => {
             createSection.classList.remove('active');
             initialMenu.style.display = 'block';
-            nicknameCreate.value = '';
+            // Put the remembered name back rather than blanking the field:
+            // backing out of a screen is not a request to be forgotten.
+            nicknameCreate.value = getPlayerName();
             errorCreate.classList.remove('show');
         });
 
@@ -348,15 +401,60 @@
             joinSection.classList.remove('active');
             initialMenu.style.display = 'block';
             roomCode.value = '';
-            nicknameJoin.value = '';
+            nicknameJoin.value = getPlayerName();
             errorRoomCode.classList.remove('show');
             errorJoin.classList.remove('show');
         });
 
         // Validate nickname
         function validateNickname(nickname) {
-            return nickname.length >= 3 && nickname.length <= 15;
+            return isValidName(nickname);
         }
+
+        // === Who you are ===
+        //
+        // Stored once and read by every screen, so the three nickname boxes
+        // below start filled in and none of them has to be typed a second
+        // time. Changing it here changes it everywhere.
+        const identity = document.getElementById('identity');
+        const identityView = document.getElementById('identity-view');
+        const identityEdit = document.getElementById('identity-edit');
+        const identityName = document.getElementById('identity-name');
+        const identityInput = document.getElementById('identity-input');
+
+        function nicknameFields() {
+            return [nicknameCreate, nicknameJoin, nicknameBot].filter(Boolean);
+        }
+
+        function paintIdentity() {
+            const name = getPlayerName();
+            identity.hidden = !name;
+            identityName.textContent = name;
+            identityView.hidden = false;
+            identityEdit.hidden = true;
+            nicknameFields().forEach(field => { field.value = name; });
+        }
+
+        document.getElementById('btn-change-name').addEventListener('click', () => {
+            identityInput.value = getPlayerName();
+            identityView.hidden = true;
+            identityEdit.hidden = false;
+            identityInput.focus();
+            identityInput.select();
+        });
+
+        function saveIdentity() {
+            if (!setPlayerName(identityInput.value)) {
+                identityInput.focus();
+                return;
+            }
+            paintIdentity();
+        }
+
+        document.getElementById('btn-save-name').addEventListener('click', saveIdentity);
+        identityInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') saveIdentity();
+        });
 
         // Validate room code
         function validateRoomCode(code) {
@@ -372,8 +470,7 @@
                 return;
             }
 
-            // Store nickname in sessionStorage
-            sessionStorage.setItem('playerNickname', nickname);
+            setPlayerName(nickname);
             sessionStorage.setItem('isHost', 'true');
 
             // Redirect to lobby
@@ -403,8 +500,7 @@
 
             if (hasError) return;
 
-            // Store nickname and room code in sessionStorage
-            sessionStorage.setItem('playerNickname', nickname);
+            setPlayerName(nickname);
             sessionStorage.setItem('roomCode', code);
             sessionStorage.setItem('isHost', 'false');
 
@@ -481,7 +577,6 @@
         btnBot.addEventListener('click', () => {
             initialMenu.style.display = 'none';
             botSection.classList.add('active');
-            nicknameBot.value = sessionStorage.getItem('playerNickname') || '';
             nicknameBot.focus();
         });
 
@@ -500,8 +595,7 @@
             }
             errorBot.classList.remove('show');
 
-            sessionStorage.setItem('playerNickname', nickname);
-            sessionStorage.setItem('vsPlayerName', nickname);
+            setPlayerName(nickname);
             sessionStorage.setItem('vsBotLevel', selectedLevel);
 
             // Straight to the arena: a bot match needs no lobby and no server.
@@ -511,6 +605,8 @@
         nicknameBot.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') btnBotConfirm.click();
         });
+
+        paintIdentity();
     </script>
 </body>
 
