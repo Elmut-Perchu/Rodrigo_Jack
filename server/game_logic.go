@@ -252,6 +252,13 @@ func applyDamageAmount(room *Room, attacker *Player, victim *Player, attackType 
 
 // handlePlayerDeath handles player death
 func handlePlayerDeath(room *Room, victim *Player, attacker *Player) {
+	// Two blows landing on the same fighter before the round is torn down
+	// would each count a round end: the winner would be credited twice, two
+	// intermissions would be scheduled, and two game loops would start.
+	if !victim.IsAlive {
+		return
+	}
+
 	victim.IsAlive = false
 
 	log.Printf("[Combat] %s killed by %s", victim.Name, attacker.Name)
@@ -348,6 +355,9 @@ func handleRoundEnd(room *Room, winner *Player) {
 	if roundsWon >= RoundsToWinMatch {
 		room.mu.Lock()
 		room.IsGameActive = false
+		// The match is over: the next checkGameReady is allowed to set a new
+		// one up, tally cleared (see room.go).
+		room.MatchStarted = false
 		room.mu.Unlock()
 
 		room.Broadcast("match_end", data, nil)

@@ -13,6 +13,11 @@ const PLAYER_BOX_INSET = 28;
 // Slack around the arrow's thin shaft when testing for pickup contact.
 const PICKUP_GRACE = 22;
 
+// How long before a claim the referee ignored is worth sending again. Long
+// enough not to spam it every frame, short enough that an arrow refused once
+// (see VictimClaimDelay) becomes collectable again by simply standing there.
+const CLAIM_RETRY_MS = 1000;
+
 // How far in front of a fighter the sword can swat an arrow out of the air,
 // measured from the body centre to the arrow's shaft. Roughly the melee reach:
 // the skill in a deflection is the timing of the swing, not the spacing, and
@@ -44,7 +49,12 @@ export class VSArrow extends System {
     constructor(game) {
         super(game);
         this.game = game;
-        this.pickupRequested = new Set(); // "playerId:arrowId" claims already sent
+        // "playerId:arrowId" -> when the claim was sent. A claim the referee
+        // refuses is answered with silence (server/combat_vs.go returns), so a
+        // claim that never expires locks that fighter out of that arrow for
+        // good - which is exactly what happens to the one it was just shot
+        // with, refused for VictimClaimDelay and then never asked for again.
+        this.pickupRequested = new Map();
         this.deflectRequested = new Set(); // Arrows already reported as swatted down
     }
 
@@ -389,7 +399,8 @@ export class VSArrow extends System {
             // Keyed per fighter: two of them may reach for the same arrow,
             // and the referee is what decides who actually gets it.
             const claim = `${playerId}:${arrow.arrowId}`;
-            if (this.pickupRequested.has(claim)) continue;
+            const claimedAt = this.pickupRequested.get(claim);
+            if (claimedAt !== undefined && performance.now() - claimedAt < CLAIM_RETRY_MS) continue;
 
             const pos = entity.getComponent('position');
             const vis = entity.getComponent('visual');
@@ -408,7 +419,7 @@ export class VSArrow extends System {
             };
 
             if (this.overlaps(body, reach.x, reach.y, reach.w, reach.h)) {
-                this.pickupRequested.add(claim);
+                this.pickupRequested.set(claim, performance.now());
                 this.game.sendFrom(playerId, 'arrow_pickup', { arrowId: arrow.arrowId });
             }
         }
@@ -416,7 +427,7 @@ export class VSArrow extends System {
 
     /** Lets the game drop bookkeeping for an arrow that no longer exists. */
     forgetArrow(arrowId) {
-        [...this.pickupRequested].forEach(claim => {
+        [...this.pickupRequested.keys()].forEach(claim => {
             if (claim.endsWith(`:${arrowId}`)) this.pickupRequested.delete(claim);
         });
         this.deflectRequested.delete(arrowId);

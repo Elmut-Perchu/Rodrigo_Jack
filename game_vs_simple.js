@@ -285,11 +285,23 @@ export class GameVSSimple {
      * `durationMs` of real time, then snaps back - a real setTimeout, so the
      * slowdown it creates cannot extend its own duration.
      */
-    triggerVictorySlowMo(scale = 0.25, durationMs = 1200) {
+    triggerVictorySlowMo(scale = 0.4, durationMs = 1400, onDone = null) {
         this.timeScale = scale;
+
+        // At the instant the round is decided almost nothing this owns is
+        // still moving - the loser has no knockback, remote fighters are
+        // placed from a buffer stamped with the server clock, and the server
+        // has already stopped its loop - so scaling time alone reads as a
+        // stutter rather than a slow-motion beat. The desaturation is what
+        // actually announces it.
+        const world = document.querySelector('.game-world');
+        if (world) world.style.filter = 'saturate(0.35) contrast(1.15)';
+
         clearTimeout(this._slowMoTimer);
         this._slowMoTimer = setTimeout(() => {
             this.timeScale = 1.0;
+            if (world) world.style.filter = '';
+            if (onDone) onDone();
         }, durationMs);
     }
 
@@ -1053,6 +1065,23 @@ export class GameVSSimple {
         const visual = entity.getComponent('visual');
         if (visual && visual.div) visual.div.style.opacity = '1';
 
+        // setState() treats death as terminal, so without this the fighter
+        // comes back still pinned on its last death frame - upright play, a
+        // corpse sprite (see Animation.revive).
+        const animation = entity.getComponent('animation');
+        if (animation) animation.revive();
+        // Killed mid-swing, the pose hold would otherwise outlive the respawn.
+        entity._attackHoldUntil = 0;
+
+        const velocity = entity.getComponent('velocity');
+        if (velocity) { velocity.vx = 0; velocity.vy = 0; }
+
+        // Remote fighters are drawn from the interpolation buffer, which still
+        // holds where the body was before it fell: left alone it would glide
+        // the corpse back across the arena before snapping to the new spawn.
+        const interp = entity.getComponent('interpolation');
+        if (interp && interp.buffer) interp.buffer.length = 0;
+
         this.refreshHud();
     }
 
@@ -1068,10 +1097,10 @@ export class GameVSSimple {
         this.roundWins = data.roundWins || this.roundWins;
         if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
 
-        this.triggerVictorySlowMo();
-
+        // The banner waits for the beat to finish: raised immediately it takes
+        // the eye off the very moment the slow-motion exists to show.
         const title = data.reason === 'draw' ? 'Round Draw - replaying...' : `${data.winnerName} wins the round!`;
-        this.showRoundBanner(title, data.winnerTeam);
+        this.triggerVictorySlowMo(0.4, 1400, () => this.showRoundBanner(title, data.winnerTeam));
     }
 
     handleMatchEnd(data) {
@@ -1081,15 +1110,18 @@ export class GameVSSimple {
         this.roundWins = data.roundWins || this.roundWins;
         if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
 
-        this.triggerVictorySlowMo();
-
-        const screen = document.getElementById('game-over-screen');
         const label = document.getElementById('winner-name');
         if (label) {
             label.textContent = data.winnerName ? `${data.winnerName} Wins the Match!` : 'Draw!';
         }
         this.renderScoreboard('match-scoreboard', data.winnerTeam);
-        if (screen) screen.style.display = 'flex';
+
+        // The game-over panel is a near-opaque full-screen overlay: raised
+        // straight away it hides the very blow the beat exists to show.
+        this.triggerVictorySlowMo(0.4, 1400, () => {
+            const screen = document.getElementById('game-over-screen');
+            if (screen) screen.style.display = 'flex';
+        });
 
         console.log('🏁 [GameVSSimple] Match over:', data);
     }
@@ -1113,7 +1145,12 @@ export class GameVSSimple {
         }
         clearTimeout(this._roundBannerTimer);
 
-        const dismiss = () => {
+        // Movement keys auto-repeat, so a key held at the moment of the kill
+        // would dismiss the banner before it had been drawn once.
+        const acceptFrom = performance.now() + 400;
+
+        const dismiss = (event) => {
+            if (event && performance.now() < acceptFrom) return;
             banner.classList.remove('visible');
             window.removeEventListener('keydown', dismiss);
             this._roundBannerKeyHandler = null;
@@ -1121,7 +1158,7 @@ export class GameVSSimple {
         };
 
         this._roundBannerKeyHandler = dismiss;
-        window.addEventListener('keydown', dismiss, { once: true });
+        window.addEventListener('keydown', dismiss);
         this._roundBannerTimer = setTimeout(dismiss, durationMs);
     }
 
@@ -1735,6 +1772,19 @@ export class GameVSSimple {
         if (this.botStreamInterval) clearInterval(this.botStreamInterval);
         if (this.arbiter) this.arbiter.stop();
         if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.close();
+
+        // Leaving mid-beat must not strand the arena desaturated.
+        clearTimeout(this._slowMoTimer);
+        this.timeScale = 1.0;
+        const world = document.querySelector('.game-world');
+        if (world) world.style.filter = '';
+
+        if (this._roundBannerKeyHandler) {
+            window.removeEventListener('keydown', this._roundBannerKeyHandler);
+            this._roundBannerKeyHandler = null;
+        }
+        clearTimeout(this._roundBannerTimer);
+        clearTimeout(this._countdownHideTimer);
     }
 }
 

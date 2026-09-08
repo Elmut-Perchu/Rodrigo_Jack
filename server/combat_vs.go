@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 )
 
 // ArenaArrow is an arrow that exists in the world.
@@ -27,6 +28,12 @@ type ArenaArrow struct {
 	DirY  float64 `json:"dirY"`
 	Stuck bool    `json:"stuck"`
 
+	// Who this arrow was last shot into, and when. A hit plants it at the
+	// victim's feet - inside their own pickup box - so without this every
+	// arrow that connects is a free arrow for the person who was shot.
+	StruckBy string    `json:"-"`
+	StruckAt time.Time `json:"-"`
+
 	// Launch parameters, decided by how long the shooter held the draw.
 	// Relayed untouched: the server does not simulate flight, but every
 	// client needs the same numbers to agree on where the arrow goes.
@@ -37,6 +44,12 @@ type ArenaArrow struct {
 // MaxArrowsInFlight caps the registry so a misbehaving client cannot grow it
 // without bound.
 const MaxArrowsPerRoom = 64
+
+// How long the fighter an arrow just went through is barred from picking it
+// up. The arrow lands at their ankles, well inside their pickup radius, so
+// without a delay the shot is collected by its own victim on the same frame -
+// which read as "arrows vanish when they hit someone".
+const VictimClaimDelay = 1500 * time.Millisecond
 
 // Quiver limits, mirroring constants/arrow_constants.js.
 //
@@ -198,6 +211,10 @@ func (p *Player) handleArrowPickup(msg *Message) {
 		p.Room.mu.Unlock()
 		return // Already taken, or still in flight
 	}
+	if arrow.StruckBy == actor.ID && time.Since(arrow.StruckAt) < VictimClaimDelay {
+		p.Room.mu.Unlock()
+		return // The fighter it went through does not get to pocket it where it fell
+	}
 	if actor.Quiver >= MaxArrows {
 		p.Room.mu.Unlock()
 		return // Full: leave it on the ground for someone else
@@ -275,6 +292,8 @@ func (p *Player) handleArrowHit(msg *Message) {
 		if arrow, exists := p.Room.Arrows[arrowID]; exists {
 			arrow.X, arrow.Y = x, y
 			arrow.Stuck = false // Still falling; the owner reports where it lands
+			arrow.StruckBy = victim.ID
+			arrow.StruckAt = time.Now()
 		}
 		p.Room.mu.Unlock()
 

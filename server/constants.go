@@ -40,11 +40,13 @@ const (
 	MAX_PLAYERS_PER_ROOM = 4
 	MIN_PLAYERS_TO_START = 2
 
-	// Combat constants
-	MELEE_RANGE  = 30.0
-	ARROW_RANGE  = 400.0
-	MAGIC_RANGE  = 200.0
-	MAGIC_RADIUS = 80.0
+	// Attack ranges deliberately do NOT live here. They used to, at 30px for a
+	// sword, and nothing ever read them - game_logic.go holds the live values
+	// (MeleeRange = 120.0). Re-aliasing them to these figures would cut sword
+	// reach back to a quarter of a sprite width, the bug game_logic.go's own
+	// comment records having already been fixed once. The damage figures below
+	// are the cautionary tale: a second, shadowing set of them there made every
+	// online sword blow instantly fatal until they were aliased back to these.
 
 	// Health is counted in half-hearts: MAX_HEALTH of them make the four
 	// hearts the HUD draws (constants/vs_combat_constants.js, which must

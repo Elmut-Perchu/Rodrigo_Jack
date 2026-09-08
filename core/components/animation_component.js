@@ -42,6 +42,23 @@ export class Animation extends Component {
         }
     }
 
+    /**
+     * Leaves the death state.
+     *
+     * setState() refuses to: in Adventure mode a death is terminal, and
+     * several systems rely on that. VS mode fights in rounds, so a fighter
+     * respawns for the next one and has to clear the latch explicitly -
+     * otherwise it stays pinned on its last death frame for the rest of the
+     * match, sliding around the arena as a corpse.
+     */
+    revive(state = 'idle') {
+        if (!this.sequences[state]) return;
+        this.currentState = state;
+        this.currentSequence = this.sequences[state].frames;
+        this.currentFrame = 0;
+        this.frameTimer = 0;
+    }
+
     updateAnimation(deltaTime) {
         this.frameTimer += deltaTime;
         if (this.frameTimer >= 1 / this.sequences[this.currentState].speed) {

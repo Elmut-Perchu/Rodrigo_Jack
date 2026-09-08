@@ -19,7 +19,8 @@ type Room struct {
 	CountdownActive    bool                     `json:"countdownActive"`
 	CountdownRemaining int                      `json:"countdownRemaining"`
 	TeamMode           string                   `json:"teamMode"` // ffa | 2v2 | 3v1 (see bots.go)
-	RoundWins          map[int]int              `json:"roundWins"` // team number -> rounds won this match
+	RoundWins          map[int]int              `json:"roundWins"`    // team number -> rounds won this match
+	MatchStarted       bool                     `json:"matchStarted"` // True from the first round until someone takes the match
 	countdownCancel    chan struct{}            // Channel to cancel countdown goroutine
 	Arrows             map[string]*ArenaArrow   `json:"-"` // Arrows lying in the arena (see combat_vs.go)
 	Spectres           map[string]string        `json:"-"` // Spirit id -> caster id (see spectre.go)
@@ -613,6 +614,7 @@ func (r *Room) cleanup() {
 	r.CountdownActive = false
 	r.CountdownRemaining = 0
 	r.IsGameActive = false
+	r.MatchStarted = false
 	log.Printf("🧹 [cleanup] Set IsGameActive = FALSE (THIS STOPS handlePlayerState from working!)")
 
 	log.Printf("🧹 [cleanup] Room %s cleaned up successfully", r.Code)
@@ -633,6 +635,16 @@ func (r *Room) checkGameReady() {
 	// stopGameLoop != nil means StartGameLoop() was called and channel created
 	if r.IsGameActive && r.stopGameLoop != nil {
 		log.Printf("[CHECK_GAME_READY] ✅ Game loop already running, ignoring")
+		return
+	}
+
+	// That guard alone is open during a round intermission: handleRoundEnd
+	// stops the loop (nilling stopGameLoop) while IsGameActive stays true. A
+	// reconnection or a stray game_ready in those few seconds would otherwise
+	// re-enter the branch below, wiping the round score and health mid-match
+	// and starting a second countdown.
+	if r.MatchStarted {
+		log.Printf("[CHECK_GAME_READY] Match already under way (round intermission), ignoring")
 		return
 	}
 
@@ -663,13 +675,20 @@ func (r *Room) checkGameReady() {
 		r.initializePlayerSpawnPositions()
 
 		// Arrows from a previous match must not litter the new one, and
-		// everyone starts the round with a full starting quiver.
+		// everyone starts the round whole: a room that has already hosted a
+		// match still holds its fighters' last health, and the round tally is
+		// only ever cleared here - clearing it in resetForNextRound would
+		// erase the running score between two rounds of the SAME match.
 		r.clearArrowsLocked()
 		r.clearSwingsLocked()
 		r.clearSpectresLocked()
+		r.RoundWins = make(map[int]int)
 		for _, player := range r.Players {
+			player.Health = MAX_HEALTH
+			player.IsAlive = true
 			player.Quiver = StartingArrows
 		}
+		r.MatchStarted = true
 
 		// CRITICAL: Set IsGameActive = true BEFORE countdown!
 		// Otherwise game loop will immediately stop when it checks IsGameActive
@@ -846,17 +865,68 @@ func (r *Room) resetForNextRound() {
 	r.mu.Lock()
 
 	r.initializePlayerSpawnPositions()
+
+	// Clients hold one entity per arrow and per spirit and only drop them when
+	// told to, so the ids have to be snapshotted before the registries are
+	// wiped - otherwise the arena stays littered with objects the server has
+	// never heard of, and walking over them does nothing.
+	clearedArrows := make([]string, 0, len(r.Arrows))
+	for id := range r.Arrows {
+		clearedArrows = append(clearedArrows, id)
+	}
+	clearedSpectres := make([]string, 0, len(r.Spectres))
+	for id := range r.Spectres {
+		clearedSpectres = append(clearedSpectres, id)
+	}
 	r.clearArrowsLocked()
 	r.clearSwingsLocked()
 	r.clearSpectresLocked()
+
+	type revival struct {
+		id     string
+		x, y   float64
+		health int
+	}
+	revivals := make([]revival, 0, len(r.Players))
+	revived := make([]*Player, 0, len(r.Players))
 	for _, player := range r.Players {
 		player.Health = MAX_HEALTH
 		player.IsAlive = true
 		player.Quiver = StartingArrows
+		revivals = append(revivals, revival{player.ID, player.X, player.Y, player.Health})
+		revived = append(revived, player)
 	}
 
 	r.IsGameActive = true
 	r.mu.Unlock()
+
+	// Everything below has to happen with the lock released: Broadcast takes
+	// it for reading, and sendQuiver reaches through to a bot's controller.
+
+	for _, id := range clearedArrows {
+		r.Broadcast("arrow_removed", map[string]interface{}{"arrowId": id}, nil)
+	}
+	for _, id := range clearedSpectres {
+		r.Broadcast("spectre_ended", map[string]interface{}{"spectreId": id}, nil)
+	}
+
+	// property.isAlive / property.movable are ONLY ever restored client-side by
+	// handlePlayerRespawn, which nothing but this message drives. Without it
+	// the round's losers spend the rest of the match as frozen corpses the
+	// server still lists as living targets.
+	for _, rev := range revivals {
+		r.Broadcast("player_respawn", map[string]interface{}{
+			"playerId": rev.id,
+			"x":        rev.x,
+			"y":        rev.y,
+			"health":   rev.health,
+		}, nil)
+	}
+
+	// A client keeps its own arrow count and only ever resyncs on quiver_update.
+	for _, player := range revived {
+		player.sendQuiver()
+	}
 
 	go r.startMatchCountdown()
 }

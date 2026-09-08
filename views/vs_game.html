@@ -17,6 +17,11 @@
         body {
             margin: 0;
             padding: 0;
+            /* The only other declaration of this font on the page is on
+               .vs-ui-overlay, so every overlay outside that one subtree - the
+               countdown, the round banner, the game-over panel, the loading
+               screen - was falling back to the browser's default serif. */
+            font-family: 'Press Start 2P', sans-serif;
             overflow: hidden;
             background-color: #1a1a1a;
         }
@@ -271,6 +276,12 @@
             border-radius: 10px;
             padding: 40px;
             text-align: center;
+            /* The pixel font is about twice as wide per glyph and the body
+               cannot scroll, so an over-wide panel would be clipped with no
+               way to reach it. */
+            max-width: 90vw;
+            box-sizing: border-box;
+            overflow-wrap: anywhere;
         }
 
         .game-over-title {
@@ -378,6 +389,9 @@
             border-radius: 10px;
             padding: 18px 32px;
             text-align: center;
+            max-width: 90vw;
+            box-sizing: border-box;
+            overflow-wrap: anywhere;
             z-index: 1500;
             pointer-events: none;
             opacity: 0;

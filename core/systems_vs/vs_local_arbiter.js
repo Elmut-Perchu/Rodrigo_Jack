@@ -45,6 +45,10 @@ const CLASH_RANGE_FACTOR = 1.35;
 // --- server/combat_vs.go ---
 const STARTING_ARROWS = 3;
 const MAX_ARROWS = 7;
+
+// How long the fighter an arrow just went through is barred from picking it up
+// (server/combat_vs.go VictimClaimDelay).
+const VICTIM_CLAIM_DELAY_MS = 1500;
 const MAX_ARROWS_IN_ARENA = 64;
 
 const SYNC_HZ = 20;
@@ -534,6 +538,7 @@ export class VSLocalArbiter {
 
         const arrow = this.arrows.get(data.arrowId);
         if (!arrow || !arrow.stuck) return;
+        if (arrow.struckBy === playerId && performance.now() - arrow.struckAt < VICTIM_CLAIM_DELAY_MS) return;
         if (fighter.quiver >= MAX_ARROWS) return;
 
         this.arrows.delete(data.arrowId);
@@ -597,6 +602,12 @@ export class VSLocalArbiter {
             if (arrow) {
                 arrow.x = data.x ?? arrow.x;
                 arrow.y = data.y ?? arrow.y;
+                // It lands at the victim's ankles, inside their own pickup
+                // box: without this they collect it on the same frame and the
+                // shot looks like it vanished into them (mirrors the server's
+                // VictimClaimDelay).
+                arrow.struckBy = victimId;
+                arrow.struckAt = performance.now();
             }
             this.emit('arrow_dropped', { arrowId: data.arrowId, x: data.x, y: data.y });
         }
