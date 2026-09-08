@@ -19,6 +19,7 @@ type Room struct {
 	CountdownActive    bool                     `json:"countdownActive"`
 	CountdownRemaining int                      `json:"countdownRemaining"`
 	TeamMode           string                   `json:"teamMode"` // ffa | 2v2 | 3v1 (see bots.go)
+	RoundWins          map[int]int              `json:"roundWins"` // team number -> rounds won this match
 	countdownCancel    chan struct{}            // Channel to cancel countdown goroutine
 	Arrows             map[string]*ArenaArrow   `json:"-"` // Arrows lying in the arena (see combat_vs.go)
 	Spectres           map[string]string        `json:"-"` // Spirit id -> caster id (see spectre.go)
@@ -101,6 +102,7 @@ func NewRoom(code string) *Room {
 		CountdownActive:    false,
 		CountdownRemaining: 0,
 		TeamMode:           TeamModeFFA,
+		RoundWins:          make(map[int]int),
 	}
 }
 
@@ -832,4 +834,29 @@ func (r *Room) startMatchCountdown() {
 	go r.StartGameLoop()
 	log.Printf("[COUNTDOWN] Game loop started for room %s", r.Code)
 	log.Printf("[COUNTDOWN] ========== END ==========")
+}
+
+// resetForNextRound respawns everyone and starts the next round's countdown.
+// Mirrors checkGameReady's opening moves (spawn positions, cleared arrows/
+// swings/spectres, full health and quiver) minus the "wait for everyone to
+// be ready" gate - the room already proved every client loads fine when the
+// match itself started. Called from a delayed goroutine (see handleRoundEnd)
+// so every client's slow-motion victory beat has time to play out first.
+func (r *Room) resetForNextRound() {
+	r.mu.Lock()
+
+	r.initializePlayerSpawnPositions()
+	r.clearArrowsLocked()
+	r.clearSwingsLocked()
+	r.clearSpectresLocked()
+	for _, player := range r.Players {
+		player.Health = MAX_HEALTH
+		player.IsAlive = true
+		player.Quiver = StartingArrows
+	}
+
+	r.IsGameActive = true
+	r.mu.Unlock()
+
+	go r.startMatchCountdown()
 }

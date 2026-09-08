@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 // Game constants for server-side validation
 const (
 	// Movement validation.
@@ -59,4 +61,13 @@ const (
 	// centre to body centre, so this is the length of an outstretched arm.
 	// Mirrors POINT_BLANK_RANGE in constants/vs_bow_constants.js.
 	POINT_BLANK_RANGE = 120.0
+
+	// A match is a race to this many round wins, not a single life. Losing a
+	// round only ends that round - RoundWins tracks the running score.
+	RoundsToWinMatch = 6
 )
+
+// How long the room pauses after a round before respawning everyone for the
+// next one. Gives every client time to play its slow-motion victory beat and
+// show the round score before the next round's countdown starts.
+const RoundIntermissionDelay = 4 * time.Second

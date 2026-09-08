@@ -76,6 +76,16 @@ export class GameVSSimple {
         this.matchOver = false;
         this._onJoined = null;     // Resolves connectToServer() on lobby_joined
 
+        // Round score. A match is a race to roundsToWin round wins, not a
+        // single life - see handleRoundEnd/handleMatchEnd.
+        this.roundWins = {};   // team number -> rounds won this match
+        this.roundsToWin = 6;
+        // Brief slow-motion beat on the round/match-deciding kill. 1 = normal
+        // speed; loop() scales every system's deltaTime by this.
+        this.timeScale = 1.0;
+        this._slowMoTimer = null;
+        this._roundBannerTimer = null;
+
         // Map data
         this.currentMap = null;
 
@@ -242,7 +252,7 @@ export class GameVSSimple {
         this.lastTime = currentTime;
 
         // Cap deltaTime to prevent huge jumps
-        const cappedDelta = Math.min(deltaTime, 0.05);
+        const cappedDelta = Math.min(deltaTime, 0.05) * this.timeScale;
 
         this.accumulator += cappedDelta;
 
@@ -264,6 +274,20 @@ export class GameVSSimple {
         }
 
         requestAnimationFrame(this.loop.bind(this));
+    }
+
+    /**
+     * Brief slow-motion beat on the kill that decides a round or the match.
+     * Scales every system's deltaTime in loop() down to `scale` for
+     * `durationMs` of real time, then snaps back - a real setTimeout, so the
+     * slowdown it creates cannot extend its own duration.
+     */
+    triggerVictorySlowMo(scale = 0.25, durationMs = 1200) {
+        this.timeScale = scale;
+        clearTimeout(this._slowMoTimer);
+        this._slowMoTimer = setTimeout(() => {
+            this.timeScale = 1.0;
+        }, durationMs);
     }
 
     // === Network Methods ===
@@ -416,6 +440,9 @@ export class GameVSSimple {
                 break;
             case 'player_respawn':
                 this.handlePlayerRespawn(data);
+                break;
+            case 'round_end':
+                this.handleRoundEnd(data);
                 break;
             case 'match_end':
                 this.handleMatchEnd(data);
@@ -1024,18 +1051,68 @@ export class GameVSSimple {
         this.refreshHud();
     }
 
+    /**
+     * A side being reduced to nobody standing ends the round, not
+     * necessarily the match (see server/game_logic.go handleRoundEnd) - the
+     * match is a race to this.roundsToWin round wins. Plays the same
+     * slow-motion beat as the final match-winning kill, then a transient
+     * banner with the running score, and lets the server's own pause
+     * (RoundIntermissionDelay) respawn everyone for the next round.
+     */
+    handleRoundEnd(data) {
+        this.roundWins = data.roundWins || this.roundWins;
+        if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
+
+        this.triggerVictorySlowMo();
+
+        if (data.reason === 'draw') {
+            this.showRoundBanner('Round Draw', 'Replaying the round...');
+            return;
+        }
+
+        const wins = this.roundWins[data.winnerTeam] ?? '?';
+        this.showRoundBanner(
+            `${data.winnerName} wins the round!`,
+            `${wins} / ${this.roundsToWin}`
+        );
+    }
+
     handleMatchEnd(data) {
         if (this.matchOver) return;
         this.matchOver = true;
 
+        this.triggerVictorySlowMo();
+
         const screen = document.getElementById('game-over-screen');
         const label = document.getElementById('winner-name');
         if (label) {
-            label.textContent = data.winnerName ? `${data.winnerName} Wins!` : 'Draw!';
+            if (data.winnerName) {
+                const wins = this.roundWins[data.winnerTeam] ?? this.roundsToWin;
+                label.textContent = `${data.winnerName} Wins the Match! (${wins}/${this.roundsToWin})`;
+            } else {
+                label.textContent = 'Draw!';
+            }
         }
         if (screen) screen.style.display = 'flex';
 
         console.log('🏁 [GameVSSimple] Match over:', data);
+    }
+
+    /** Transient, non-blocking round-result banner - the match keeps going. */
+    showRoundBanner(title, subtitle, durationMs = 3000) {
+        const banner = document.getElementById('round-banner');
+        const titleEl = document.getElementById('round-banner-title');
+        const scoreEl = document.getElementById('round-banner-score');
+        if (!banner || !titleEl || !scoreEl) return;
+
+        titleEl.textContent = title;
+        scoreEl.textContent = subtitle;
+        banner.classList.add('visible');
+
+        clearTimeout(this._roundBannerTimer);
+        this._roundBannerTimer = setTimeout(() => {
+            banner.classList.remove('visible');
+        }, durationMs);
     }
 
     /** Brief red flash so a hit is readable without a damage number. */

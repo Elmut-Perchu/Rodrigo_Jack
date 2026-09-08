@@ -4,6 +4,7 @@ import (
 	"log"
 	"math"
 	"sort"
+	"time"
 )
 
 // AttackType represents different attack types
@@ -271,53 +272,96 @@ func handlePlayerDeath(room *Room, victim *Player, attacker *Player) {
 	room.mu.RUnlock()
 
 	if aliveTeams <= 1 {
-		handleMatchEnd(room, lastAlive)
+		handleRoundEnd(room, lastAlive)
 	}
 }
 
-// handleMatchEnd handles match conclusion
-func handleMatchEnd(room *Room, winner *Player) {
-	room.mu.Lock()
-	room.IsGameActive = false
-	room.mu.Unlock()
-
-	// Stop game loop
-	room.StopGameLoop()
-
-	winnerData := map[string]interface{}{
-		"reason": "last_standing",
+// buildWinnerData assembles the fields shared by round_end and match_end:
+// who won, and - in team play - who else gets credit for it.
+func buildWinnerData(room *Room, winner *Player) map[string]interface{} {
+	if winner == nil {
+		return map[string]interface{}{"reason": "draw"}
 	}
 
-	if winner != nil {
-		winnerData["winnerId"] = winner.ID
-		winnerData["winnerName"] = winner.Name
-
+	data := map[string]interface{}{
+		"reason":     "last_standing",
+		"winnerId":   winner.ID,
+		"winnerName": winner.Name,
 		// In team play the survivor is only a representative of the side that
 		// won, so name its team-mates too.
-		winnerData["winnerTeam"] = winner.Team
-		room.mu.RLock()
-		mates := make([]string, 0)
-		for _, player := range room.Players {
-			if player.Team == winner.Team {
-				mates = append(mates, player.Name)
-			}
-		}
-		teamed := room.TeamMode != TeamModeFFA && room.TeamMode != ""
-		room.mu.RUnlock()
-
-		if teamed && len(mates) > 1 {
-			sort.Strings(mates)
-			winnerData["winnerNames"] = mates
-		}
-
-		log.Printf("[Match] Match ended - Winner: %s", winner.Name)
-	} else {
-		winnerData["reason"] = "draw"
-		log.Printf("[Match] Match ended - Draw")
+		"winnerTeam": winner.Team,
 	}
 
-	// Broadcast match end
-	room.Broadcast("match_end", winnerData, nil)
+	room.mu.RLock()
+	mates := make([]string, 0)
+	for _, player := range room.Players {
+		if player.Team == winner.Team {
+			mates = append(mates, player.Name)
+		}
+	}
+	teamed := room.TeamMode != TeamModeFFA && room.TeamMode != ""
+	room.mu.RUnlock()
+
+	if teamed && len(mates) > 1 {
+		sort.Strings(mates)
+		data["winnerNames"] = mates
+	}
+
+	return data
+}
+
+// handleRoundEnd closes out a round: a side being reduced to nobody standing
+// ends that round, not necessarily the match. The winning side's tally is
+// credited and broadcast; only once it reaches RoundsToWinMatch does this
+// become a match_end. Otherwise every client gets to play its slow-motion
+// victory beat before resetForNextRound respawns everyone.
+func handleRoundEnd(room *Room, winner *Player) {
+	room.mu.Lock()
+	room.StopGameLoop()
+	room.mu.Unlock()
+
+	data := buildWinnerData(room, winner)
+
+	if winner == nil {
+		// Simultaneous deaths: nobody scores, just play the round again.
+		log.Printf("[Round] Round ended in a draw for room %s", room.Code)
+		room.Broadcast("round_end", data, nil)
+		go func() {
+			time.Sleep(RoundIntermissionDelay)
+			room.resetForNextRound()
+		}()
+		return
+	}
+
+	room.mu.Lock()
+	room.RoundWins[winner.Team]++
+	roundsWon := room.RoundWins[winner.Team]
+	roundWins := make(map[int]int, len(room.RoundWins))
+	for team, wins := range room.RoundWins {
+		roundWins[team] = wins
+	}
+	room.mu.Unlock()
+
+	data["roundWins"] = roundWins
+	data["roundsToWin"] = RoundsToWinMatch
+
+	if roundsWon >= RoundsToWinMatch {
+		room.mu.Lock()
+		room.IsGameActive = false
+		room.mu.Unlock()
+
+		room.Broadcast("match_end", data, nil)
+		log.Printf("[Match] Match ended - Winner: %s (%d rounds)", winner.Name, roundsWon)
+		return
+	}
+
+	room.Broadcast("round_end", data, nil)
+	log.Printf("[Round] Round ended - Winner: %s (%d/%d rounds)", winner.Name, roundsWon, RoundsToWinMatch)
+
+	go func() {
+		time.Sleep(RoundIntermissionDelay)
+		room.resetForNextRound()
+	}()
 }
 
 // calculateDistance calculates Euclidean distance between two points

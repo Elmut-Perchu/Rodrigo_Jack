@@ -49,6 +49,14 @@ const MAX_ARROWS_IN_ARENA = 64;
 
 const SYNC_HZ = 20;
 
+// A match is a race to this many round wins (server/constants.go RoundsToWinMatch).
+const ROUNDS_TO_WIN_MATCH = 6;
+
+// Pause between a round ending and the next one's respawn, giving the
+// client's slow-motion victory beat and round banner room to play out
+// (mirrors server/constants.go RoundIntermissionDelay).
+const ROUND_INTERMISSION_MS = 4000;
+
 export class VSLocalArbiter {
     constructor(game) {
         this.game = game;
@@ -60,6 +68,7 @@ export class VSLocalArbiter {
         this.active = false;
         this.matchOver = false;
         this.syncTimer = null;
+        this.roundWins = new Map(); // playerId -> rounds won this match
     }
 
     // === Registration ===
@@ -358,14 +367,67 @@ export class VSLocalArbiter {
         });
 
         if (aliveCount <= 1) {
-            this.matchOver = true;
-            this.active = false;
-            const winner = lastAliveId ? this.fighters.get(lastAliveId) : null;
-            this.emit('match_end', {
-                winnerId: lastAliveId,
-                winnerName: winner ? winner.name : null
-            });
+            this.handleRoundEnd(lastAliveId);
         }
+    }
+
+    /**
+     * Nobody standing ends the round, not necessarily the match - it takes
+     * ROUNDS_TO_WIN_MATCH round wins to take it. Mirrors server/game_logic.go
+     * handleRoundEnd so an offline match plays out the same way as online.
+     */
+    handleRoundEnd(lastAliveId) {
+        this.active = false;
+        const winner = lastAliveId ? this.fighters.get(lastAliveId) : null;
+
+        if (!winner) {
+            // Simultaneous deaths: nobody scores, just play the round again.
+            this.emit('round_end', { reason: 'draw' });
+            setTimeout(() => this.resetForNextRound(), ROUND_INTERMISSION_MS);
+            return;
+        }
+
+        const wins = (this.roundWins.get(lastAliveId) || 0) + 1;
+        this.roundWins.set(lastAliveId, wins);
+
+        const roundWins = {};
+        this.roundWins.forEach((count, id) => { roundWins[id] = count; });
+
+        const payload = {
+            reason: 'last_standing',
+            winnerId: lastAliveId,
+            winnerName: winner.name,
+            // No real teams offline - a fighter is credited under its own id.
+            winnerTeam: lastAliveId,
+            roundWins,
+            roundsToWin: ROUNDS_TO_WIN_MATCH
+        };
+
+        if (wins >= ROUNDS_TO_WIN_MATCH) {
+            this.matchOver = true;
+            this.emit('match_end', payload);
+            return;
+        }
+
+        this.emit('round_end', payload);
+        setTimeout(() => this.resetForNextRound(), ROUND_INTERMISSION_MS);
+    }
+
+    /** Respawns every fighter and starts the next round (server/room.go resetForNextRound). */
+    resetForNextRound() {
+        let index = 0;
+        this.fighters.forEach((fighter, playerId) => {
+            const spawn = this.game.getSpawnPoint(index);
+            fighter.health = MAX_HEALTH;
+            fighter.isAlive = true;
+            fighter.quiver = STARTING_ARROWS;
+            this.sendQuiver(playerId);
+            this.emit('player_respawn', { playerId, x: spawn.x, y: spawn.y, health: fighter.health });
+            index++;
+        });
+
+        this.active = true;
+        this.emit('match_start', {});
     }
 
     // === Arrows (server/combat_vs.go) ===
