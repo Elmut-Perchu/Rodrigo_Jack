@@ -1,22 +1,21 @@
 // core/systems_vs/vs_audio_system.js - VS Mode sound
 import { System } from '../systems/system.js';
 import { Audio } from '../components/audio_component.js';
+import { getVolume, onVolumeChange, DEFAULT_VOLUME } from '../vs_prefs.js';
 
 // Adventure runs from the site root, VS from /views/.
 const BASE_PATH = (typeof window !== 'undefined' && window.location.pathname.includes('/views/'))
     ? '../'
     : './';
 
-/**
- * How loud the arena is overall.
+/*
+ * How loud the arena is overall lives in core/vs_prefs.js, because the player
+ * sets it from the pause menu and it has to outlast the match they set it in.
  *
- * Applied on top of every individual sound's own level, so the balance between
- * them - a footstep against a sword against a death - is untouched and only
- * the whole thing moves. Four fighters swinging, shooting and landing at once
- * adds up to far more noise than the solo game ever makes from the same
- * samples, which is why the arena needs its own figure rather than Adventure's.
+ * It is applied on top of every individual sound's own level, so the balance
+ * between them - a footstep against a sword against a death - is untouched and
+ * only the whole thing moves.
  */
-const ARENA_VOLUME = 0.45;
 
 /**
  * Sound for the arena, using the same samples and the same state-driven
@@ -46,13 +45,27 @@ export class VSAudio extends System {
         this.registerSounds(this.audio);
         this.registerSounds(this.remoteAudio);
 
-        this.audio.setMasterVolume(ARENA_VOLUME);
-        this.remoteAudio.setMasterVolume(ARENA_VOLUME);
-
         // Other players are quieter than you are
         this.remoteAudio.setCategoryVolume('sfx', 0.45);
 
         this.clash = new MetallicClash();
+
+        // Followed live rather than read once: the slider in the pause menu is
+        // something you listen to while you drag it, not something you set and
+        // then go back into the match to test.
+        this.applyVolume(getVolume());
+        this.stopFollowingVolume = onVolumeChange(level => this.applyVolume(level));
+    }
+
+    applyVolume(level) {
+        this.audio.setMasterVolume(level);
+        this.remoteAudio.setMasterVolume(level);
+        this.clash.volume = level;
+    }
+
+    /** Called when the arena is torn down, so a finished match stops listening. */
+    dispose() {
+        if (this.stopFollowingVolume) this.stopFollowingVolume();
     }
 
     registerSounds(audio) {
@@ -169,6 +182,11 @@ export class VSAudio extends System {
 class MetallicClash {
     constructor() {
         this.ctx = null;
+
+        // Synthesised rather than played through the Audio component, so it
+        // never passes the master volume and has to carry it itself. Kept in
+        // step by VSAudio.applyVolume.
+        this.volume = DEFAULT_VOLUME;
     }
 
     ensureContext() {
@@ -188,9 +206,7 @@ class MetallicClash {
 
         const now = ctx.currentTime;
         const out = ctx.createGain();
-        // Synthesised rather than played through the Audio component, so it
-        // has to carry the arena's level itself.
-        out.gain.value = 0.35 * ARENA_VOLUME;
+        out.gain.value = 0.35 * this.volume;
         out.connect(ctx.destination);
 
         // Inharmonic partials are what make metal sound like metal rather

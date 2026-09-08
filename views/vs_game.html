@@ -402,6 +402,7 @@
                 <div><span class="key">X</span><b>Sword</b> - keeps chaining while held</div>
                 <div><span class="key">W</span><b>Bow</b> - tap to snap, hold to draw</div>
                 <div><span class="key">C</span><b>Spirit</b> - hold to charge, press to send</div>
+                <div><span class="key">Esc</span><b>Pause</b> - volume, restart, quit</div>
             </div>
         </div>
 
@@ -420,13 +421,15 @@
 
     <script type="module">
         import { GameVSSimple } from '../game_vs_simple.js';
+        import { VSPauseMenu } from '../core/vs_pause_menu.js';
+        import { getPlayerName } from '../core/vs_prefs.js';
 
         // Parse URL parameters. The lobby only forwards ?room=CODE, so the
         // nickname is recovered from the storage the lobby wrote it to.
         const urlParams = new URLSearchParams(window.location.search);
         const roomCode = urlParams.get('room') || 'TEST';
         const playerName = urlParams.get('name')
-            || sessionStorage.getItem('vsPlayerName')
+            || getPlayerName()
             || 'Player';
 
         // ?mode=bot starts an offline match against the computer: no lobby, no
@@ -441,6 +444,16 @@
 
         // Initialize VS game
         let gameInstance = null;
+        let pauseMenu = null;
+
+        // Where "play it again" goes. Against the computer that is a fresh
+        // match on the same difficulty; online there is nothing this client
+        // can restart on its own, so it goes back to the lobby.
+        function rematchUrl() {
+            return isBotMatch
+                ? `vs_game.html?mode=bot&level=${encodeURIComponent(botLevel)}`
+                : 'vs_lobby.html';
+        }
 
         async function initializeGame() {
             try {
@@ -465,6 +478,14 @@
 
                 // Hide loading screen
                 document.getElementById('loading-screen').style.display = 'none';
+
+                // Esc or P: pause, volume, rematch, leave. Built once the
+                // match exists because it needs to know whether it is allowed
+                // to stop time - which it only is against the computer.
+                pauseMenu = new VSPauseMenu(gameInstance, {
+                    onRestart: () => { window.location.href = rematchUrl(); },
+                    onQuit: () => { window.location.href = isBotMatch ? 'vs_menu.html' : '../index.html'; }
+                });
 
                 console.log('[VS Game] Game initialized successfully');
                 console.log('[VS Game] Arrows or ZQSD to move and aim, Space to jump, X sword, W bow, C spirit');
@@ -492,9 +513,7 @@
         if (isBotMatch) btnLobby.textContent = 'Rematch';
 
         btnLobby.addEventListener('click', () => {
-            window.location.href = isBotMatch
-                ? `vs_game.html?mode=bot&level=${encodeURIComponent(botLevel)}`
-                : 'vs_lobby.html';
+            window.location.href = rematchUrl();
         });
 
         document.getElementById('btn-menu').addEventListener('click', () => {
@@ -519,6 +538,7 @@
 
         // Cleanup on unload
         window.addEventListener('beforeunload', () => {
+            if (pauseMenu) pauseMenu.dispose();
             if (gameInstance && gameInstance.cleanup) {
                 gameInstance.cleanup();
             }

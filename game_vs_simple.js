@@ -192,6 +192,11 @@ export class GameVSSimple {
      */
     loop(currentTime) {
         if (this.isPaused) {
+            // Time spent paused is not time the simulation owes. Without
+            // this, resuming handed the physics the whole length of the pause
+            // at once and the fighter lurched forward on the first frame back.
+            this.lastTime = currentTime;
+            this.accumulator = 0;
             requestAnimationFrame(this.loop.bind(this));
             return;
         }
@@ -1512,6 +1517,10 @@ export class GameVSSimple {
         // game object unless they are taken down with it.
         const input = this.localPlayer && this.localPlayer.getComponent('input');
         if (input && typeof input.dispose === 'function') input.dispose();
+
+        // The audio system follows the volume preference for as long as it
+        // lives; a finished match should stop being told about it.
+        if (this.audio && typeof this.audio.dispose === 'function') this.audio.dispose();
 
         if (this.syncInterval) clearInterval(this.syncInterval);
         if (this.botStreamInterval) clearInterval(this.botStreamInterval);

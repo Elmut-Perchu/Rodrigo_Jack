@@ -465,6 +465,10 @@
 - [x] Passages aux bords de l'arène : sortir d'un côté ramène de l'autre,
       tomber par le sol ramène par le plafond — voir
       `constants/vs_wrap_constants.js` et `core/systems_vs/vs_wrap_system.js`
+- [x] Menu pause en match (Échap/P) : volume, relancer, quitter — voir
+      `core/vs_pause_menu.js`
+- [x] Pseudo retenu d'un écran à l'autre et d'une visite à l'autre — voir
+      `core/vs_prefs.js`
 - [ ] Add VS-specific sounds (battle music, announcer)
 - [ ] Create victory/defeat screens
 - [ ] Add match statistics (kills, deaths, time)
