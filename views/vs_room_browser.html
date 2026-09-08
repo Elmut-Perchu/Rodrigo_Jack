@@ -276,7 +276,9 @@
 
     <script type="module">
         import { getPlayerName, setPlayerName, isValidName } from '../core/vs_prefs.js';
-        const API_URL = 'http://localhost:8080/api/rooms';
+        import { ROOMS_API_URL } from '../core/config.js';
+        import { withWakeUp } from '../core/ui/wake_overlay.js';
+        const API_URL = ROOMS_API_URL;
 
         const elements = {
             nicknameCreate: document.getElementById('nickname-create'),
@@ -295,10 +297,18 @@
             setInterval(loadRooms, 3000);
         });
 
-        // Load rooms from API
+        // Load rooms from API. Only the very first load waits out a cold
+        // Render instance with the wake-up overlay - the 3s auto-refresh
+        // below just fails quietly (existing message) since by then the
+        // server has already answered once.
+        let isFirstLoad = true;
+
         async function loadRooms() {
             try {
-                const response = await fetch(API_URL);
+                const response = isFirstLoad
+                    ? await withWakeUp(() => fetch(API_URL))
+                    : await fetch(API_URL);
+                isFirstLoad = false;
                 const data = await response.json();
 
                 elements.roomCount.textContent = data.count;
@@ -415,9 +425,9 @@
             loadRooms();
         });
 
-        // Back to main menu
+        // Back to the VS menu (this page is only reachable from there)
         elements.btnBack.addEventListener('click', () => {
-            window.location.href = '../index.html';
+            window.location.href = 'vs_menu.html';
         });
 
         // Enter key for create

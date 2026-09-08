@@ -15,3 +15,7 @@ export const WS_SERVER_URL = isLocal
 export const SCORE_API_URL = isLocal
     ? 'http://localhost:8081/api/scores'
     : 'https://rodrigo-jack-score-api.onrender.com/api/scores';
+
+export const ROOMS_API_URL = isLocal
+    ? 'http://localhost:8080/api/rooms'
+    : 'https://rodrigo-jack-vs-server.onrender.com/api/rooms';

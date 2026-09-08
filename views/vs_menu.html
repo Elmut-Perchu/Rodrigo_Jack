@@ -177,6 +177,15 @@
             background-color: #8e44ad;
         }
 
+        .btn-browse {
+            background-color: #e67e22;
+            color: white;
+        }
+
+        .btn-browse:hover {
+            background-color: #d35400;
+        }
+
         /* Difficulty picker */
         .difficulty-list {
             display: flex;
@@ -293,6 +302,7 @@
             <div class="btn-group">
                 <button class="btn btn-create" id="btn-create">Create Room</button>
                 <button class="btn btn-join" id="btn-join">Join Room</button>
+                <button class="btn btn-browse" id="btn-browse">Browse Rooms</button>
                 <button class="btn btn-bot" id="btn-bot">Fight the Computer</button>
                 <button class="btn btn-back" id="btn-back-main">Back to Main Menu</button>
             </div>
@@ -353,6 +363,7 @@
 
         const btnCreate = document.getElementById('btn-create');
         const btnJoin = document.getElementById('btn-join');
+        const btnBrowse = document.getElementById('btn-browse');
         const btnBackMain = document.getElementById('btn-back-main');
 
         const nicknameCreate = document.getElementById('nickname-create');
@@ -372,6 +383,11 @@
             initialMenu.style.display = 'none';
             createSection.classList.add('active');
             nicknameCreate.focus();
+        });
+
+        // Browse available rooms instead of typing a code blind
+        btnBrowse.addEventListener('click', () => {
+            window.location.href = 'vs_room_browser.html';
         });
 
         // Show Join Room Section
