@@ -87,8 +87,24 @@ const RETICLE = [
     '##.....##'
 ];
 
+/**
+ * A cup, not a medal - read as a trophy at a glance without needing the
+ * handles that would not survive being drawn a dozen pixels wide anyway.
+ * Tallies round wins on the scoreboard (see game_vs_simple.js).
+ */
+const TROPHY = [
+    '.#####.',
+    '#######',
+    '#######',
+    '.#####.',
+    '..###..',
+    '.#####.',
+    '#######'
+];
+
 export const HEART_ASPECT = HEART[0].length / HEART.length;
 export const ARROW_ASPECT = ARROW[0].length / ARROW.length;
+export const TROPHY_ASPECT = TROPHY[0].length / TROPHY.length;
 
 export function heartIcon(colour) {
     return pixelSvg(HEART, colour);
@@ -96,6 +112,10 @@ export function heartIcon(colour) {
 
 export function arrowIcon(colour) {
     return pixelSvg(ARROW, colour);
+}
+
+export function trophyIcon(colour) {
+    return pixelSvg(TROPHY, colour);
 }
 
 export function reticleIcon(colour) {

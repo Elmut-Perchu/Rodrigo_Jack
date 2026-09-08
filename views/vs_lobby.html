@@ -40,6 +40,27 @@
             box-sizing: border-box;
         }
 
+        /* "3, 2, 1..." once everyone is ready - mirrors the arena's own
+           countdown overlay (views/vs_game.html #countdown-overlay). */
+        .lobby-countdown-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.55);
+            z-index: 2500;
+        }
+
+        .lobby-countdown-number {
+            font-size: 64px;
+            color: #f39c12;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        }
+
         .lobby-container {
             /* Auto margins centre the panel when there is room and
                collapse to nothing when there is not, so a long list

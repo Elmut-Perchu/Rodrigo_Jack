@@ -150,6 +150,15 @@ export class VSRender extends System {
         const sequence = animation.sequences[animation.currentState];
         if (!sequence) return;
 
+        // Death plays once and holds its last frame - looping it back to the
+        // wind-up frame made a downed fighter twitch back to life forever.
+        const lastFrame = animation.currentSequence.length - 1;
+        if (animation.currentState === 'death' && animation.currentFrame >= lastFrame) {
+            animation.currentFrame = lastFrame;
+            this.paintFrame(animation, visual);
+            return;
+        }
+
         animation.frameTimer += deltaTime;
         if (animation.frameTimer >= 1 / sequence.speed) {
             animation.frameTimer = 0;

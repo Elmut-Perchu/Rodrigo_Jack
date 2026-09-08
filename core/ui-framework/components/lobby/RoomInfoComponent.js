@@ -82,6 +82,22 @@ function ControlButtons(state, actions) {
 }
 
 /**
+ * Big pixel-style "3, 2, 1..." once the countdown starts - mirrors the
+ * arena's own countdown overlay (views/vs_game.html #countdown-overlay) so
+ * the beat feels consistent from lobby to arena. websocket-state-bridge.js
+ * already tracks countdownRemaining on every countdown_started/tick; this
+ * was the only place actually reading it.
+ */
+function CountdownOverlay(state) {
+  const { countdownRemaining = 0 } = state;
+  if (!countdownRemaining) return null;
+
+  return h('div', { className: 'lobby-countdown-overlay' },
+    h('div', { className: 'lobby-countdown-number' }, String(countdownRemaining))
+  );
+}
+
+/**
  * Room info component (combines all sub-components)
  * @param {Object} state - Framework state
  * @param {string} state.roomCode - Room code
@@ -97,6 +113,7 @@ export function RoomInfoComponent(state, actions) {
     h('div', { className: 'lobby-controls' },
       LobbyInfo(state),
       ControlButtons(state, actions)
-    )
+    ),
+    CountdownOverlay(state)
   );
 }

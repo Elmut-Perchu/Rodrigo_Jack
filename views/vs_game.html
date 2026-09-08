@@ -315,7 +315,22 @@
         }
 
         .scoreboard-trophies {
-            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 11px;
+            color: #95a5a6;
+        }
+
+        /* Same pixel-grid-as-SVG technique as the HUD's hearts/quiver
+           (core/vs_pixel_icons.js) - crisp blocky edges instead of a
+           colour emoji glyph that would clash with the pixel-art sprites. */
+        .trophy-icon {
+            display: inline-block;
+            width: 12px;
+            height: 11px;
+            background-size: 100% 100%;
+            image-rendering: pixelated;
         }
 
         .game-over-buttons {
@@ -383,6 +398,17 @@
         .round-banner .scoreboard {
             margin-bottom: 0;
             min-width: 220px;
+        }
+
+        .round-banner-hint {
+            margin-top: 14px;
+            font-size: 9px;
+            color: #95a5a6;
+            animation: blink 1.2s steps(2, jump-none) infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0.25; }
         }
 
         /* Countdown - "3, 2, 1, GO!" before a round starts, first one included */
@@ -516,6 +542,7 @@
         <div class="round-banner" id="round-banner">
             <div class="round-banner-title" id="round-banner-title">Round Won!</div>
             <div class="scoreboard" id="round-scoreboard"></div>
+            <div class="round-banner-hint">Press any key to continue</div>
         </div>
 
         <!-- Countdown ("3, 2, 1, GO!") - shown before every round, first included -->

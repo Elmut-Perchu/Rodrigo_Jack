@@ -26,12 +26,13 @@ import { createBot } from './create/bot_create.js';
 import { createSpectre } from './create/spectre_create.js';
 import { differentSwing, HEARTS, HALVES_PER_HEART, MAX_HEALTH } from './constants/vs_combat_constants.js';
 import { VS_SPECTRE } from './constants/vs_spectre_constants.js';
-import { heartIcon } from './core/vs_pixel_icons.js';
+import { heartIcon, trophyIcon } from './core/vs_pixel_icons.js';
 
 // Drawn once and reused by every card: the same two images for all four
 // fighters, so the browser decodes them once.
 const FULL_HEART = heartIcon('#e0464c');
 const EMPTY_HEART = heartIcon('#3a2430');
+const TROPHY_GOLD = trophyIcon('#f39c12');
 import { paletteFor } from './constants/vs_palette.js';
 import { getBotLevel } from './constants/bot_constants.js';
 
@@ -85,6 +86,7 @@ export class GameVSSimple {
         this.timeScale = 1.0;
         this._slowMoTimer = null;
         this._roundBannerTimer = null;
+        this._roundBannerKeyHandler = null;
         this._countdownHideTimer = null;
 
         // Map data
@@ -1102,10 +1104,25 @@ export class GameVSSimple {
         this.renderScoreboard('round-scoreboard', winnerTeam);
         banner.classList.add('visible');
 
+        // Any key dismisses it early; otherwise it hides itself once the
+        // server's own pause between rounds (RoundIntermissionDelay) ends.
+        // This is purely a client-side dismissal - the round restart itself
+        // runs on the server's own timer regardless.
+        if (this._roundBannerKeyHandler) {
+            window.removeEventListener('keydown', this._roundBannerKeyHandler);
+        }
         clearTimeout(this._roundBannerTimer);
-        this._roundBannerTimer = setTimeout(() => {
+
+        const dismiss = () => {
             banner.classList.remove('visible');
-        }, durationMs);
+            window.removeEventListener('keydown', dismiss);
+            this._roundBannerKeyHandler = null;
+            clearTimeout(this._roundBannerTimer);
+        };
+
+        this._roundBannerKeyHandler = dismiss;
+        window.addEventListener('keydown', dismiss, { once: true });
+        this._roundBannerTimer = setTimeout(dismiss, durationMs);
     }
 
     /**
@@ -1138,7 +1155,16 @@ export class GameVSSimple {
 
             const trophies = document.createElement('span');
             trophies.className = 'scoreboard-trophies';
-            trophies.textContent = wins > 0 ? '🏆'.repeat(wins) : '—';
+            if (wins > 0) {
+                for (let i = 0; i < wins; i++) {
+                    const trophy = document.createElement('span');
+                    trophy.className = 'trophy-icon';
+                    trophy.style.backgroundImage = TROPHY_GOLD;
+                    trophies.appendChild(trophy);
+                }
+            } else {
+                trophies.textContent = '—';
+            }
             row.appendChild(trophies);
 
             container.appendChild(row);
