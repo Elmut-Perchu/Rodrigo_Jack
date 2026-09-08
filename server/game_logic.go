@@ -4,6 +4,7 @@ import (
 	"log"
 	"math"
 	"sort"
+	"time"
 )
 
 // AttackType represents different attack types
@@ -435,11 +436,15 @@ func RespawnPlayer(room *Room, playerID string, spawnX, spawnY float64) {
 
 	log.Printf("[Combat] Respawned %s at (%.2f, %.2f)", player.Name, spawnX, spawnY)
 
-	// Broadcast respawn
+	// Broadcast respawn. The timestamp says when the body was moved, on the
+	// same clock every game_state_sync is stamped with, so a client can refuse
+	// the states that were already in flight and still describe the corpse
+	// (see core/components/interpolation_component.js reset).
 	room.Broadcast("player_respawn", map[string]interface{}{
-		"playerId": playerID,
-		"x":        spawnX,
-		"y":        spawnY,
-		"health":   player.Health,
+		"playerId":  playerID,
+		"x":         spawnX,
+		"y":         spawnY,
+		"health":    player.Health,
+		"timestamp": time.Now().UnixMilli(),
 	}, nil)
 }

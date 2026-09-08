@@ -1148,8 +1148,18 @@ export class GameVSSimple {
         // the corpse back across the arena before snapping to the new spawn.
         // reset() drops that history and pins them on the spawn until the
         // first real state arrives.
+        //
+        // It is also told WHEN the body was moved, because dropping the
+        // history is not enough on its own: a state already in flight arrives
+        // after this and would become the only history there is, putting the
+        // fighter back where they died for the first second of the new round.
         const interp = entity.getComponent('interpolation');
-        if (interp && typeof interp.reset === 'function') interp.reset(data.x, data.y);
+        if (interp && typeof interp.reset === 'function') {
+            const movedAt = data.timestamp !== undefined
+                ? this.serverToLocal(data.timestamp)
+                : undefined;
+            interp.reset(data.x, data.y, movedAt);
+        }
 
         this.refreshHud();
     }

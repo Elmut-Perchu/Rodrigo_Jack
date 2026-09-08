@@ -1064,12 +1064,19 @@ func (r *Room) resetForNextRound() {
 	// handlePlayerRespawn, which nothing but this message drives. Without it
 	// the round's losers spend the rest of the match as frozen corpses the
 	// server still lists as living targets.
+	//
+	// One timestamp for the whole reset, taken once so that every fighter's
+	// cutoff is the same instant. It is what lets a client tell a state
+	// describing the new round from one still describing the last (see
+	// core/components/interpolation_component.js reset).
+	movedAt := time.Now().UnixMilli()
 	for _, rev := range revivals {
 		r.Broadcast("player_respawn", map[string]interface{}{
-			"playerId": rev.id,
-			"x":        rev.x,
-			"y":        rev.y,
-			"health":   rev.health,
+			"playerId":  rev.id,
+			"x":         rev.x,
+			"y":         rev.y,
+			"health":    rev.health,
+			"timestamp": movedAt,
 		}, nil)
 	}
 

@@ -507,6 +507,11 @@ export class VSLocalArbiter {
 
     /** Respawns every fighter and starts the next round (server/room.go resetForNextRound). */
     resetForNextRound() {
+        // One instant for the whole reset, exactly as the room does it
+        // (server/room.go resetForNextRound) - offline there is nothing in
+        // flight to refuse, but the message keeps the same shape either way.
+        const movedAt = Date.now();
+
         let index = 0;
         this.fighters.forEach((fighter, playerId) => {
             const spawn = this.game.getSpawnPoint(index);
@@ -514,7 +519,10 @@ export class VSLocalArbiter {
             fighter.isAlive = true;
             fighter.quiver = STARTING_ARROWS;
             this.sendQuiver(playerId);
-            this.emit('player_respawn', { playerId, x: spawn.x, y: spawn.y, health: fighter.health });
+            this.emit('player_respawn', {
+                playerId, x: spawn.x, y: spawn.y,
+                health: fighter.health, timestamp: movedAt
+            });
             index++;
         });
 

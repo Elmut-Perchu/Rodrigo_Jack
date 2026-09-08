@@ -141,3 +141,57 @@ test('a respawn pins the fighter on its spawn instead of gliding out of stale hi
         assert.deepEqual(placed, { x: 128, y: 128 });
     });
 });
+
+test('a state describing where a fighter died cannot follow them to their spawn', () => {
+    // The reported fault: between the last moment of a round and the spawn of
+    // the next one, a fighter shows up somewhere they are not.
+    //
+    // Emptying the buffer on respawn is not enough on its own. A state that
+    // was already on its way when the server moved the body arrives *after*
+    // the reset, and an empty buffer has nothing to compare it against - so
+    // the corpse's position becomes the only history there is, and that is
+    // what gets drawn. The fighter appears back where they died, and stays
+    // there until enough fresh states have arrived to push it out.
+    withClock(({ advance }) => {
+        const interpolation = new Interpolation();
+
+        const death = Date.now();
+        interpolation.addState({ timestamp: death, x: 1400, y: 700 });
+        advance(200);
+        interpolation.getInterpolatedPosition();
+
+        // The round ends, the players read the score, the server respawns
+        // everyone. reset() is told when that happened.
+        advance(8000);
+        const respawnedAt = Date.now();
+        interpolation.reset(128, 128, respawnedAt);
+
+        // ...and now the straggler lands, describing the corpse.
+        interpolation.addState({ timestamp: death + 20, x: 1400, y: 700 });
+
+        advance(16);
+        const placed = interpolation.getInterpolatedPosition();
+        assert.deepEqual(placed, { x: 128, y: 128 },
+            'a state from before the respawn must not decide where the fighter is drawn');
+    });
+});
+
+test('fresh states are still accepted after a respawn', () => {
+    // The guard above must not swallow the states that matter: one-way latency
+    // means a perfectly good state is stamped slightly before it arrives.
+    withClock(({ advance }) => {
+        const interpolation = new Interpolation();
+
+        const respawnedAt = Date.now();
+        interpolation.reset(128, 128, respawnedAt);
+
+        advance(400);
+        interpolation.addState({ timestamp: respawnedAt + 50, x: 200, y: 128 });
+        interpolation.addState({ timestamp: respawnedAt + 100, x: 300, y: 128 });
+
+        advance(200);
+        const placed = interpolation.getInterpolatedPosition();
+        assert.ok(placed.x > 128,
+            `the fighter should have moved off its spawn, drawn at ${placed.x}`);
+    });
+});

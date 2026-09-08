@@ -2,6 +2,17 @@
 import { Component } from './component.js';
 import { wrapValue, shortestDelta } from '../../constants/vs_wrap_constants.js';
 
+/**
+ * How much older than a respawn a state may still be and be believed, in ms.
+ *
+ * It covers the one-way trip: a state stamped when the server sent it lands a
+ * latency later, so a perfectly good one is always slightly "before" now. What
+ * it has to refuse - a state describing where somebody died - is a whole
+ * intermission old, and the players spend that reading the round score, so
+ * there is a wide gap between the two and no need to cut it fine.
+ */
+const RESPAWN_GRACE = 250;
+
 export class Interpolation extends Component {
     constructor() {
         super();
@@ -39,6 +50,9 @@ export class Interpolation extends Component {
         // and VSMovement leaves the body at whatever it last did.
         this.held = null;
 
+        // States stamped before this are refused. See reset().
+        this.acceptFrom = 0;
+
         // Arena size, when the map's edges are passages rather than walls.
         // Left at zero the interpolation is an ordinary straight line, which
         // is what every non-wrapping map wants.
@@ -55,6 +69,12 @@ export class Interpolation extends Component {
 
     addState(state) {
         const timestamp = state.timestamp || Date.now();
+
+        // Anything describing the fighter before the server last moved them by
+        // hand is describing a body that is no longer there - see reset().
+        // Ordering against the buffer cannot catch these, because the buffer is
+        // empty at exactly the moment they arrive.
+        if (timestamp < this.acceptFrom) return;
 
         // getInterpolatedPosition scans the buffer expecting it to run in
         // time order. A state stamped no later than the one already at the
@@ -83,14 +103,35 @@ export class Interpolation extends Component {
      * The old states have to go: they describe a journey that no longer
      * happened, and interpolating out of them drags the fighter back across
      * the arena from wherever they died.
+     *
+     * Emptying the buffer is not enough by itself, which is the whole reason
+     * for `movedAt`. A state that was already in flight when the server moved
+     * the body arrives *after* this call, and an empty buffer has nothing to
+     * judge it against - so the corpse's position becomes the only history
+     * there is, and the fighter is drawn back where they died until a second's
+     * worth of fresh states has pushed it out. Between the last moment of a
+     * round and the spawn of the next one, that is exactly the fighter
+     * appearing somewhere they are not.
+     *
+     * @param movedAt  when the server moved the body, on the same timeline the
+     *                 states are stamped on (see game_vs_simple.js
+     *                 serverToLocal). Left out, a fixed grace covers the
+     *                 one-way trip instead, which is all an older server can
+     *                 offer.
      */
-    reset(x, y) {
+    reset(x, y, movedAt) {
         this.buffer.length = 0;
         this.held = { x, y };
         // The clock belongs to the history it was reading. Kept across a
         // respawn it would carry the old timeline into the new one.
         this.renderTime = 0;
         this.lastSampledAt = 0;
+
+        // A fresh state is stamped when the server sent it, so it is always a
+        // little older than the moment it lands. The cutoff has to sit far
+        // enough back to let those through, and everything it is meant to
+        // refuse is a whole intermission old.
+        this.acceptFrom = (movedAt || Date.now()) - RESPAWN_GRACE;
     }
 
     getInterpolatedPosition() {
