@@ -331,6 +331,9 @@ func handleRoundEnd(room *Room, winner *Player) {
 	if winner == nil {
 		// Simultaneous deaths: nobody scores, just play the round again.
 		log.Printf("[Round] Round ended in a draw for room %s", room.Code)
+		// Nobody scored, but the screen still shows the running tally.
+		data["roundsToWin"] = RoundsToWinMatch
+		decorateScore(room, data, nil)
 		room.Broadcast("round_end", data, nil)
 		room.beginRoundIntermission()
 		return
@@ -347,6 +350,7 @@ func handleRoundEnd(room *Room, winner *Player) {
 
 	data["roundWins"] = roundWins
 	data["roundsToWin"] = RoundsToWinMatch
+	decorateScore(room, data, winner)
 
 	if roundsWon >= RoundsToWinMatch {
 		room.mu.Lock()
@@ -367,6 +371,41 @@ func handleRoundEnd(room *Room, winner *Player) {
 	// The next round starts when the players ask for it, not when a timer
 	// says so.
 	room.beginRoundIntermission()
+}
+
+// decorateScore restates the round score one entry per player rather than one
+// per team, and names the winning side by player id.
+//
+// The clients keep their own idea of who is on which side, assembled from the
+// roster and refreshed by every state broadcast, and the score screen used to
+// look each fighter's team up in it before it could say how many rounds they
+// had won. That is a second copy of something the server already knows, and a
+// scoreboard that reads a stale or half-built copy credits the wrong fighter -
+// which is exactly what it did on the first round of a match, before enough
+// broadcasts had gone by. Sending the answer instead of the ingredients takes
+// the whole question away.
+func decorateScore(room *Room, data map[string]interface{}, winner *Player) {
+	room.mu.RLock()
+	defer room.mu.RUnlock()
+
+	wins := make(map[string]int, len(room.Players))
+	for id, player := range room.Players {
+		wins[id] = room.RoundWins[player.Team]
+	}
+	data["playerWins"] = wins
+
+	if winner == nil {
+		return
+	}
+
+	winners := make([]string, 0, 2)
+	for id, player := range room.Players {
+		if player.Team == winner.Team {
+			winners = append(winners, id)
+		}
+	}
+	sort.Strings(winners)
+	data["winnerIds"] = winners
 }
 
 // calculateDistance calculates Euclidean distance between two points

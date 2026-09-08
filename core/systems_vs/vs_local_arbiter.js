@@ -422,7 +422,11 @@ export class VSLocalArbiter {
 
         if (!winner) {
             // Simultaneous deaths: nobody scores, just play the round again.
-            this.emit('round_end', { reason: 'draw' });
+            this.emit('round_end', {
+                reason: 'draw',
+                roundsToWin: ROUNDS_TO_WIN_MATCH,
+                playerWins: this.winsByPlayer()
+            });
             this.beginRoundIntermission();
             return;
         }
@@ -442,7 +446,12 @@ export class VSLocalArbiter {
             winnerName: winner.name,
             winnerTeam,
             roundWins,
-            roundsToWin: ROUNDS_TO_WIN_MATCH
+            roundsToWin: ROUNDS_TO_WIN_MATCH,
+            // The same tally restated per fighter, and the winning side named
+            // by id, exactly as the server sends it (server/game_logic.go
+            // decorateScore) - the scoreboard reads these and nothing else.
+            playerWins: this.winsByPlayer(),
+            winnerIds: this.alliesOf(winnerTeam)
         };
 
         if (wins >= ROUNDS_TO_WIN_MATCH) {
@@ -453,6 +462,25 @@ export class VSLocalArbiter {
 
         this.emit('round_end', payload);
         this.beginRoundIntermission();
+    }
+
+    /** Rounds won, one entry per fighter (server/game_logic.go decorateScore). */
+    winsByPlayer() {
+        const wins = {};
+        this.fighters.forEach((fighter, playerId) => {
+            const team = this.game.teams.get(playerId);
+            wins[playerId] = this.roundWins.get(team) || 0;
+        });
+        return wins;
+    }
+
+    /** Every fighter on a given side, by id. Offline that is always one. */
+    alliesOf(team) {
+        const ids = [];
+        this.fighters.forEach((fighter, playerId) => {
+            if (this.game.teams.get(playerId) === team) ids.push(playerId);
+        });
+        return ids;
     }
 
     /**

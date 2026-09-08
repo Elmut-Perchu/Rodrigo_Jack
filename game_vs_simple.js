@@ -99,6 +99,10 @@ export class GameVSSimple {
         // Server clock -> local clock, for the interpolation timeline. Learnt
         // from the state broadcasts themselves (see serverToLocal).
         this._serverClockOffset = null;
+        // The round score as the referee states it: rounds won per player id,
+        // and the ids on the winning side (see absorbScore).
+        this._playerWins = null;
+        this._winnerIds = null;
         this._countdownHideTimer = null;
         this._freezeReleaseTimer = null;
 
@@ -1159,8 +1163,7 @@ export class GameVSSimple {
      * (RoundIntermissionDelay) respawn everyone for the next round.
      */
     handleRoundEnd(data) {
-        this.roundWins = data.roundWins || this.roundWins;
-        if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
+        this.absorbScore(data);
 
         // The banner waits for the beat to finish: raised immediately it takes
         // the eye off the very moment the slow-motion exists to show.
@@ -1179,8 +1182,7 @@ export class GameVSSimple {
         if (this.matchOver) return;
         this.matchOver = true;
 
-        this.roundWins = data.roundWins || this.roundWins;
-        if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
+        this.absorbScore(data);
 
         const label = document.getElementById('winner-name');
         if (label) {
@@ -1196,6 +1198,21 @@ export class GameVSSimple {
         });
 
         console.log('🏁 [GameVSSimple] Match over:', data);
+    }
+
+    /**
+     * Takes the round score off a round_end or match_end message.
+     *
+     * Both carry the same three things: the tally per team, the same tally
+     * restated per player, and who won. The per-player form is what the
+     * scoreboard draws from - see renderScoreboard for why the team form is
+     * no longer trusted to reach it intact.
+     */
+    absorbScore(data) {
+        this.roundWins = data.roundWins || this.roundWins;
+        if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
+        if (data.playerWins) this._playerWins = data.playerWins;
+        this._winnerIds = data.winnerIds || null;
     }
 
     /**
@@ -1321,6 +1338,16 @@ export class GameVSSimple {
         if (!container) return;
         container.innerHTML = '';
 
+        // The server states the score one entry per player, and names the
+        // winning side by id (see decorateScore). Looking each fighter's team
+        // up in this client's own roster instead was a second copy of
+        // something the referee already knew, and on the first round of a
+        // match - before many state broadcasts had gone by - it credited the
+        // wrong fighter. The team route is kept only for a server too old to
+        // send the direct answer.
+        const playerWins = this._playerWins;
+        const winnerIds = this._winnerIds;
+
         this.orderedPlayerIds().forEach(id => {
             const entity = this.entityForPlayer(id);
             if (!entity) return;
@@ -1328,11 +1355,18 @@ export class GameVSSimple {
             const np = entity.getComponent('networkPlayer');
             const name = (np && np.playerName) || 'Player';
             const team = this.teams.get(id);
-            const wins = this.roundWins[team] || 0;
+
+            const wins = (playerWins && playerWins[id] !== undefined)
+                ? playerWins[id]
+                : (this.roundWins[team] || 0);
+
+            const won = winnerIds
+                ? winnerIds.indexOf(id) !== -1
+                : (winnerTeam !== undefined && team === winnerTeam);
 
             const row = document.createElement('div');
             row.className = 'scoreboard-row';
-            if (team === winnerTeam) row.classList.add('winner');
+            if (won) row.classList.add('winner');
 
             const label = document.createElement('span');
             label.className = 'scoreboard-name';
