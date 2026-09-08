@@ -42,14 +42,14 @@ func (r *Room) StartGameLoop() {
 	isActive := r.IsGameActive
 	r.mu.Unlock()
 
-	log.Printf("🔍 [GameLoop] Initial IsGameActive: %v for room %s", isActive, r.Code)
+	debugf("🔍 [GameLoop] Initial IsGameActive: %v for room %s", isActive, r.Code)
 
 	for {
 		select {
 		case <-ticker.C:
 			r.mu.Lock()
 
-			log.Printf("🔍 [GameLoop] Tick %d - IsGameActive: %v, Players: %d", r.currentTick, r.IsGameActive, len(r.Players))
+			debugf("🔍 [GameLoop] Tick %d - IsGameActive: %v, Players: %d", r.currentTick, r.IsGameActive, len(r.Players))
 
 			if !r.IsGameActive {
 				r.mu.Unlock()
@@ -60,12 +60,12 @@ func (r *Room) StartGameLoop() {
 			// Increment tick counter
 			r.currentTick++
 
-			log.Printf("🔍 [GameLoop] Broadcasting state for tick %d", r.currentTick)
+			debugf("🔍 [GameLoop] Broadcasting state for tick %d", r.currentTick)
 
 			// Broadcast game state to all clients
 			r.broadcastGameStateLocked()
 
-			log.Printf("✅ [GameLoop] Tick %d complete", r.currentTick)
+			debugf("✅ [GameLoop] Tick %d complete", r.currentTick)
 
 			r.mu.Unlock()
 

@@ -444,17 +444,17 @@ func (p *Player) applyStateUpdate(msg *Message) {
 
 func (p *Player) handlePlayerState(msg *Message) {
 	// CRITICAL DEBUG: Log every call to understand why positions don't update
-	log.Printf("🎮 [handlePlayerState] Called for player %s (%s)", p.ID, p.Name)
+	debugf("🎮 [handlePlayerState] Called for player %s (%s)", p.ID, p.Name)
 
 	if p.Room == nil {
-		log.Printf("❌ [handlePlayerState] Player %s has NO ROOM - returning early", p.Name)
+		debugf("❌ [handlePlayerState] Player %s has NO ROOM - returning early", p.Name)
 		return
 	}
 
-	log.Printf("🎮 [handlePlayerState] Player %s room: %s, IsGameActive: %v", p.Name, p.Room.Code, p.Room.IsGameActive)
+	debugf("🎮 [handlePlayerState] Player %s room: %s, IsGameActive: %v", p.Name, p.Room.Code, p.Room.IsGameActive)
 
 	if !p.Room.IsGameActive {
-		log.Printf("❌ [handlePlayerState] Game NOT ACTIVE in room %s - returning early (THIS IS THE PROBLEM!)", p.Room.Code)
+		debugf("❌ [handlePlayerState] Game NOT ACTIVE in room %s - returning early (THIS IS THE PROBLEM!)", p.Room.Code)
 		return
 	}
 
@@ -464,11 +464,11 @@ func (p *Player) handlePlayerState(msg *Message) {
 	timeSinceLastUpdate := now.Sub(p.LastStateUpdate).Milliseconds()
 	if timeSinceLastUpdate < MIN_UPDATE_DELTA {
 		// Too fast, ignore this update
-		log.Printf("⏱️ [handlePlayerState] Rate limit: %dms since last update (need %dms) - skipping", timeSinceLastUpdate, MIN_UPDATE_DELTA)
+		debugf("⏱️ [handlePlayerState] Rate limit: %dms since last update (need %dms) - skipping", timeSinceLastUpdate, MIN_UPDATE_DELTA)
 		return
 	}
 
-	log.Printf("✅ [handlePlayerState] Passed rate limit check for %s", p.Name)
+	debugf("✅ [handlePlayerState] Passed rate limit check for %s", p.Name)
 
 	// Extract state data
 	x, xOk := msg.Data["x"].(float64)
@@ -542,7 +542,7 @@ func (p *Player) handlePlayerState(msg *Message) {
 	}
 
 	// All validations passed, accept the update
-	log.Printf("✅ [handlePlayerState] All validations passed! Updating %s: (%.1f, %.1f) -> (%.1f, %.1f)",
+	debugf("✅ [handlePlayerState] All validations passed! Updating %s: (%.1f, %.1f) -> (%.1f, %.1f)",
 		p.Name, p.X, p.Y, x, y)
 
 	p.X = x
@@ -562,7 +562,7 @@ func (p *Player) handlePlayerState(msg *Message) {
 		p.Spirit = math.Max(0, math.Min(1, spirit))
 	}
 
-	log.Printf("📊 [handlePlayerState] Position updated successfully for %s at (%.1f, %.1f)", p.Name, p.X, p.Y)
+	debugf("📊 [handlePlayerState] Position updated successfully for %s at (%.1f, %.1f)", p.Name, p.X, p.Y)
 
 	// NOTE: State broadcasting is handled by game loop (game_loop.go:82)
 	// This ensures single source of truth and consistent 20Hz tick rate
@@ -662,11 +662,11 @@ func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
 		return
 	}
 
-	log.Printf("[SEND_MSG] Attempting to send to channel (len=%d, cap=%d)", len(p.SendChan), cap(p.SendChan))
+	debugf("[SEND_MSG] Attempting to send to channel (len=%d, cap=%d)", len(p.SendChan), cap(p.SendChan))
 
 	select {
 	case p.SendChan <- msgBytes:
-		log.Printf("[SEND_MSG] Successfully sent %s to %s", msgType, p.Name)
+		debugf("[SEND_MSG] Successfully sent %s to %s", msgType, p.Name)
 	default:
 		// Buffer is full
 		if isDroppableMessage(msgType) {
@@ -678,7 +678,7 @@ func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
 				// Retry sending new message
 				select {
 				case p.SendChan <- msgBytes:
-					log.Printf("[SEND_MSG] Successfully sent %s after dropping old message", msgType)
+					debugf("[SEND_MSG] Successfully sent %s after dropping old message", msgType)
 				default:
 					log.Printf("[SEND_MSG] Still full after drop, skipping message for %s", p.Name)
 				}
@@ -686,7 +686,7 @@ func (p *Player) sendMessage(msgType string, data map[string]interface{}) {
 				// Channel emptied in the meantime, retry
 				select {
 				case p.SendChan <- msgBytes:
-					log.Printf("[SEND_MSG] Successfully sent %s on retry", msgType)
+					debugf("[SEND_MSG] Successfully sent %s on retry", msgType)
 				default:
 					log.Printf("[SEND_MSG] Failed to send %s after multiple attempts", msgType)
 				}
