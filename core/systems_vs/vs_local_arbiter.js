@@ -68,7 +68,10 @@ export class VSLocalArbiter {
         this.active = false;
         this.matchOver = false;
         this.syncTimer = null;
-        this.roundWins = new Map(); // playerId -> rounds won this match
+        // Keyed by team number (this.game.teams), not player id - matching
+        // the server's shape (Room.RoundWins keyed by team) so the client's
+        // renderScoreboard() works identically online and offline.
+        this.roundWins = new Map();
     }
 
     // === Registration ===
@@ -84,7 +87,6 @@ export class VSLocalArbiter {
     }
 
     start() {
-        this.active = true;
         this.matchOver = false;
 
         // Announce the roster, then the starting quiver, exactly as the server
@@ -100,9 +102,32 @@ export class VSLocalArbiter {
 
         this.fighters.forEach((f, playerId) => this.sendQuiver(playerId));
 
-        this.emit('match_start', {});
+        // active stays false through the countdown - fromClient() and
+        // broadcastState() both gate on it, so nothing moves the score or
+        // reaches the server-shaped protocol before "GO!" (see
+        // server/room.go startMatchCountdown, which this mirrors offline).
+        this.runCountdown(() => {
+            this.active = true;
+            this.emit('match_start', {});
+            this.syncTimer = setInterval(() => this.broadcastState(), 1000 / SYNC_HZ);
+        });
+    }
 
-        this.syncTimer = setInterval(() => this.broadcastState(), 1000 / SYNC_HZ);
+    /** Emits the same "3, 2, 1, GO!" beats as server/room.go startMatchCountdown. */
+    runCountdown(onDone) {
+        const steps = [
+            { count: 3, message: '3' },
+            { count: 2, message: '2' },
+            { count: 1, message: '1' },
+            { count: 0, message: 'GO!' }
+        ];
+
+        const tick = (i) => {
+            if (i >= steps.length) { onDone(); return; }
+            this.emit('match_countdown', steps[i]);
+            setTimeout(() => tick(i + 1), 1000);
+        };
+        tick(0);
     }
 
     stop() {
@@ -387,18 +412,20 @@ export class VSLocalArbiter {
             return;
         }
 
-        const wins = (this.roundWins.get(lastAliveId) || 0) + 1;
-        this.roundWins.set(lastAliveId, wins);
+        // Every fighter is its own team offline (see startBotMatch), same as
+        // FFA online, so this is already the right key for roundWins.
+        const winnerTeam = this.game.teams.get(lastAliveId);
+        const wins = (this.roundWins.get(winnerTeam) || 0) + 1;
+        this.roundWins.set(winnerTeam, wins);
 
         const roundWins = {};
-        this.roundWins.forEach((count, id) => { roundWins[id] = count; });
+        this.roundWins.forEach((count, team) => { roundWins[team] = count; });
 
         const payload = {
             reason: 'last_standing',
             winnerId: lastAliveId,
             winnerName: winner.name,
-            // No real teams offline - a fighter is credited under its own id.
-            winnerTeam: lastAliveId,
+            winnerTeam,
             roundWins,
             roundsToWin: ROUNDS_TO_WIN_MATCH
         };
@@ -426,8 +453,10 @@ export class VSLocalArbiter {
             index++;
         });
 
-        this.active = true;
-        this.emit('match_start', {});
+        this.runCountdown(() => {
+            this.active = true;
+            this.emit('match_start', {});
+        });
     }
 
     // === Arrows (server/combat_vs.go) ===

@@ -285,6 +285,39 @@
             margin-bottom: 30px;
         }
 
+        /* Scoreboard - one row per player, filled into both the transient
+           round banner and the final game-over screen. */
+        .scoreboard {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 30px;
+            min-width: 260px;
+        }
+
+        .scoreboard-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            font-size: 11px;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 5px;
+        }
+
+        .scoreboard-row.winner {
+            background-color: rgba(243, 156, 18, 0.2);
+            border: 2px solid #f39c12;
+        }
+
+        .scoreboard-name {
+            text-align: left;
+        }
+
+        .scoreboard-trophies {
+            font-size: 13px;
+        }
+
         .game-over-buttons {
             display: flex;
             gap: 20px;
@@ -347,9 +380,35 @@
             margin-bottom: 8px;
         }
 
-        .round-banner-score {
-            font-size: 12px;
-            color: white;
+        .round-banner .scoreboard {
+            margin-bottom: 0;
+            min-width: 220px;
+        }
+
+        /* Countdown - "3, 2, 1, GO!" before a round starts, first one included */
+        .countdown-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2500;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .countdown-overlay.visible {
+            opacity: 1;
+        }
+
+        .countdown-number {
+            font-size: 64px;
+            color: #f39c12;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
         }
 
         /* Loading Screen */
@@ -456,7 +515,12 @@
         <!-- Round Banner (transient - a round win, not the match) -->
         <div class="round-banner" id="round-banner">
             <div class="round-banner-title" id="round-banner-title">Round Won!</div>
-            <div class="round-banner-score" id="round-banner-score">1 / 6</div>
+            <div class="scoreboard" id="round-scoreboard"></div>
+        </div>
+
+        <!-- Countdown ("3, 2, 1, GO!") - shown before every round, first included -->
+        <div class="countdown-overlay" id="countdown-overlay">
+            <div class="countdown-number" id="countdown-number">3</div>
         </div>
 
         <!-- Game Over Screen -->
@@ -464,6 +528,7 @@
             <div class="game-over-content">
                 <div class="game-over-title">MATCH OVER</div>
                 <div class="winner-name" id="winner-name">Player 1 Wins!</div>
+                <div class="scoreboard" id="match-scoreboard"></div>
                 <div class="game-over-buttons">
                     <button class="btn-game-over btn-lobby" id="btn-lobby">Back to Lobby</button>
                     <button class="btn-game-over btn-menu" id="btn-menu">Main Menu</button>

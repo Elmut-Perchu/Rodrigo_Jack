@@ -85,6 +85,7 @@ export class GameVSSimple {
         this.timeScale = 1.0;
         this._slowMoTimer = null;
         this._roundBannerTimer = null;
+        this._countdownHideTimer = null;
 
         // Map data
         this.currentMap = null;
@@ -509,9 +510,11 @@ export class GameVSSimple {
             case 'countdown_cancelled':
             case 'wait_timer_started':
             case 'game_starting':
-            case 'match_countdown':
             case 'host_changed':
             case 'pong':
+                break;
+            case 'match_countdown':
+                this.handleCountdown(data);
                 break;
             default:
                 console.log('🌐 [GameVSSimple] Unhandled message:', message.type);
@@ -1065,54 +1068,96 @@ export class GameVSSimple {
 
         this.triggerVictorySlowMo();
 
-        if (data.reason === 'draw') {
-            this.showRoundBanner('Round Draw', 'Replaying the round...');
-            return;
-        }
-
-        const wins = this.roundWins[data.winnerTeam] ?? '?';
-        this.showRoundBanner(
-            `${data.winnerName} wins the round!`,
-            `${wins} / ${this.roundsToWin}`
-        );
+        const title = data.reason === 'draw' ? 'Round Draw - replaying...' : `${data.winnerName} wins the round!`;
+        this.showRoundBanner(title, data.winnerTeam);
     }
 
     handleMatchEnd(data) {
         if (this.matchOver) return;
         this.matchOver = true;
 
+        this.roundWins = data.roundWins || this.roundWins;
+        if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
+
         this.triggerVictorySlowMo();
 
         const screen = document.getElementById('game-over-screen');
         const label = document.getElementById('winner-name');
         if (label) {
-            if (data.winnerName) {
-                const wins = this.roundWins[data.winnerTeam] ?? this.roundsToWin;
-                label.textContent = `${data.winnerName} Wins the Match! (${wins}/${this.roundsToWin})`;
-            } else {
-                label.textContent = 'Draw!';
-            }
+            label.textContent = data.winnerName ? `${data.winnerName} Wins the Match!` : 'Draw!';
         }
+        this.renderScoreboard('match-scoreboard', data.winnerTeam);
         if (screen) screen.style.display = 'flex';
 
         console.log('🏁 [GameVSSimple] Match over:', data);
     }
 
     /** Transient, non-blocking round-result banner - the match keeps going. */
-    showRoundBanner(title, subtitle, durationMs = 3000) {
+    showRoundBanner(title, winnerTeam, durationMs = 3500) {
         const banner = document.getElementById('round-banner');
         const titleEl = document.getElementById('round-banner-title');
-        const scoreEl = document.getElementById('round-banner-score');
-        if (!banner || !titleEl || !scoreEl) return;
+        if (!banner || !titleEl) return;
 
         titleEl.textContent = title;
-        scoreEl.textContent = subtitle;
+        this.renderScoreboard('round-scoreboard', winnerTeam);
         banner.classList.add('visible');
 
         clearTimeout(this._roundBannerTimer);
         this._roundBannerTimer = setTimeout(() => {
             banner.classList.remove('visible');
         }, durationMs);
+    }
+
+    /**
+     * One row per present player: name, and a trophy per round they have
+     * won so far. The round that was just decided highlights its winner's
+     * row, on top of the running tally everyone already sees.
+     */
+    renderScoreboard(containerId, winnerTeam) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+
+        this.orderedPlayerIds().forEach(id => {
+            const entity = this.entityForPlayer(id);
+            if (!entity) return;
+
+            const np = entity.getComponent('networkPlayer');
+            const name = (np && np.playerName) || 'Player';
+            const team = this.teams.get(id);
+            const wins = this.roundWins[team] || 0;
+
+            const row = document.createElement('div');
+            row.className = 'scoreboard-row';
+            if (team === winnerTeam) row.classList.add('winner');
+
+            const label = document.createElement('span');
+            label.className = 'scoreboard-name';
+            label.textContent = name + (id === this.localPlayerId ? ' (You)' : '');
+            row.appendChild(label);
+
+            const trophies = document.createElement('span');
+            trophies.className = 'scoreboard-trophies';
+            trophies.textContent = wins > 0 ? '🏆'.repeat(wins) : '—';
+            row.appendChild(trophies);
+
+            container.appendChild(row);
+        });
+    }
+
+    /** Big "3, 2, 1, GO!" beat before a round starts - the very first one included. */
+    handleCountdown(data) {
+        const overlay = document.getElementById('countdown-overlay');
+        const number = document.getElementById('countdown-number');
+        if (!overlay || !number) return;
+
+        number.textContent = data.message;
+        overlay.classList.add('visible');
+
+        clearTimeout(this._countdownHideTimer);
+        if (data.count === 0) {
+            this._countdownHideTimer = setTimeout(() => overlay.classList.remove('visible'), 700);
+        }
     }
 
     /** Brief red flash so a hit is readable without a damage number. */
