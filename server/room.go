@@ -378,7 +378,8 @@ func (r *Room) startGameLocked() {
 		"roomCode": r.Code,
 	}, nil)
 
-	// Game loop is now started in startMatchCountdown() after 3-2-1-GO countdown
+	// Game loop is now started at the top of startMatchCountdown(), so state
+	// keeps flowing through the 3-2-1-GO beats
 	// Do NOT start it here (was causing double game loops!)
 }
 
@@ -804,6 +805,20 @@ func (r *Room) startMatchCountdown() {
 	log.Printf("[COUNTDOWN] ========== START ==========")
 	log.Printf("[COUNTDOWN] Starting 3-second countdown for room %s", r.Code)
 
+	// The loop runs THROUGH the countdown, not after it.
+	//
+	// Started at "GO!" instead, the three seconds before it were a total
+	// state blackout: clients had just been told where everyone respawned
+	// and then heard nothing more, so each one drew its opponents standing
+	// still at their spawn points - in mid-air, since spawns are above the
+	// platforms - while those opponents were really falling and running
+	// about on their own machines. At "GO!" the first broadcast landed and
+	// every opponent teleported, then jittered between the stale spawn and
+	// the live position until the interpolation buffer refilled. Offline the
+	// same blackout is invisible, because a bot is simulated on the very
+	// machine drawing it, which is why this only ever showed up online.
+	go r.StartGameLoop()
+
 	// Lock is not held during countdown to allow other operations
 	// We broadcast countdown messages to all players
 
@@ -846,12 +861,6 @@ func (r *Room) startMatchCountdown() {
 	r.mu.Unlock()
 	log.Printf("[COUNTDOWN] GO!")
 
-	// Small delay to let "GO!" message reach clients
-	time.Sleep(200 * time.Millisecond)
-
-	// Start the authoritative game loop (20Hz tick rate)
-	go r.StartGameLoop()
-	log.Printf("[COUNTDOWN] Game loop started for room %s", r.Code)
 	log.Printf("[COUNTDOWN] ========== END ==========")
 }
 

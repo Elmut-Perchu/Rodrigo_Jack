@@ -21,7 +21,24 @@ func (r *Room) StartGameLoop() {
 
 	r.mu.Lock()
 	r.currentTick = 0
-	r.stopGameLoop = make(chan struct{})
+
+	// A previous loop still standing is retired here rather than left to
+	// accumulate. Rounds restart the loop, so without this every round after
+	// the first added a second broadcaster: by the sixth, six goroutines were
+	// pushing game_state_sync at 20Hz each and clients had to interpolate
+	// through six times the traffic.
+	if r.stopGameLoop != nil {
+		close(r.stopGameLoop)
+	}
+
+	// Held locally as well as on the room. StopGameLoop nils the field, and
+	// the select below used to read it straight from there without the mutex:
+	// once nil, `case <-r.stopGameLoop` is a receive on a nil channel, which
+	// blocks for ever, so the stop signal could no longer reach the very loop
+	// it was meant to stop.
+	stop := make(chan struct{})
+	r.stopGameLoop = stop
+
 	isActive := r.IsGameActive
 	r.mu.Unlock()
 
@@ -52,14 +69,14 @@ func (r *Room) StartGameLoop() {
 
 			r.mu.Unlock()
 
-		case <-r.stopGameLoop:
+		case <-stop:
 			log.Printf("[GameLoop] Game loop stopped for room %s", r.Code)
 			return
 		}
 	}
 }
 
-// StopGameLoop stops the game loop
+// StopGameLoop stops the game loop. The caller must hold r.mu.
 func (r *Room) StopGameLoop() {
 	if r.stopGameLoop != nil {
 		close(r.stopGameLoop)

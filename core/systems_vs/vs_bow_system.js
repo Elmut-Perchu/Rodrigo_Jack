@@ -54,8 +54,11 @@ export class VSBow extends System {
 
             const trigger = this.triggerFor(entity);
 
-            // A dead fighter keeps its entity around but stops acting
-            if (property.isAlive === false) {
+            // A dead fighter keeps its entity around but stops acting - and so
+            // does a fighter held for the "3, 2, 1" beats, who would otherwise
+            // be shooting at opponents pinned in place and unable to dodge
+            // (see GameVSSimple.freezeFighters).
+            if (property.isAlive === false || property.movable === false) {
                 trigger.bow = false;
                 trigger.melee = false;
                 trigger.tapped = false;

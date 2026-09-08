@@ -303,7 +303,8 @@
             flex-direction: column;
             gap: 10px;
             margin-bottom: 30px;
-            min-width: 260px;
+            min-width: 300px;
+            max-width: 90vw;
         }
 
         .scoreboard-row {
@@ -323,6 +324,7 @@
 
         .scoreboard-name {
             text-align: left;
+            overflow-wrap: anywhere;
         }
 
         .scoreboard-trophies {
@@ -331,6 +333,9 @@
             gap: 3px;
             font-size: 11px;
             color: #95a5a6;
+            /* Six slots are the point of the row: a long player name must
+               push the name, not squash the score. */
+            flex-shrink: 0;
         }
 
         /* Same pixel-grid-as-SVG technique as the HUD's hearts/quiver
@@ -342,6 +347,12 @@
             height: 11px;
             background-size: 100% 100%;
             image-rendering: pixelated;
+        }
+
+        /* A round still to play. Dim enough to read as an empty socket next to
+           a won one, solid enough that the row of six is countable. */
+        .trophy-icon.empty {
+            opacity: 0.45;
         }
 
         .game-over-buttons {

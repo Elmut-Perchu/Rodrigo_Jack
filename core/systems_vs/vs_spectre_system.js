@@ -87,7 +87,9 @@ export class VSSpectre extends System {
 
         const trigger = this.triggerFor(entity);
 
-        if (property.isAlive === false) {
+        // Dead, or held for the countdown: either way the spirit stays home
+        // (see GameVSSimple.freezeFighters).
+        if (property.isAlive === false || property.movable === false) {
             state.channeling = false;
             trigger.magic = false;
             return;

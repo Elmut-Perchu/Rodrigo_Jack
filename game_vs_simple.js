@@ -33,6 +33,9 @@ import { heartIcon, trophyIcon } from './core/vs_pixel_icons.js';
 const FULL_HEART = heartIcon('#e0464c');
 const EMPTY_HEART = heartIcon('#3a2430');
 const TROPHY_GOLD = trophyIcon('#f39c12');
+// The same silhouette in slate, for a round still up for grabs: an empty row
+// of these is what makes "first to six" readable at a glance.
+const TROPHY_EMPTY = trophyIcon('#4a5a66');
 import { paletteFor } from './constants/vs_palette.js';
 import { getBotLevel } from './constants/bot_constants.js';
 
@@ -88,6 +91,7 @@ export class GameVSSimple {
         this._roundBannerTimer = null;
         this._roundBannerKeyHandler = null;
         this._countdownHideTimer = null;
+        this._freezeReleaseTimer = null;
 
         // Map data
         this.currentMap = null;
@@ -1079,8 +1083,16 @@ export class GameVSSimple {
         // Remote fighters are drawn from the interpolation buffer, which still
         // holds where the body was before it fell: left alone it would glide
         // the corpse back across the arena before snapping to the new spawn.
+        //
+        // Emptied outright it is no better, because an empty buffer means
+        // getInterpolatedPosition() returns nothing at all and VSMovement
+        // leaves the body wherever it last stood. Seeding it with the spawn
+        // gives the first real state something to blend out of.
         const interp = entity.getComponent('interpolation');
-        if (interp && interp.buffer) interp.buffer.length = 0;
+        if (interp && interp.buffer) {
+            interp.buffer.length = 0;
+            interp.addState({ x: data.x, y: data.y, vx: 0, vy: 0, timestamp: Date.now() });
+        }
 
         this.refreshHud();
     }
@@ -1190,17 +1202,18 @@ export class GameVSSimple {
             label.textContent = name + (id === this.localPlayerId ? ' (You)' : '');
             row.appendChild(label);
 
+            // One slot per round it takes to win the match, filled in as they
+            // are won. Drawing only the trophies already earned told you the
+            // score but not the distance left to run, which is the thing worth
+            // seeing while the match is still open.
             const trophies = document.createElement('span');
             trophies.className = 'scoreboard-trophies';
-            if (wins > 0) {
-                for (let i = 0; i < wins; i++) {
-                    const trophy = document.createElement('span');
-                    trophy.className = 'trophy-icon';
-                    trophy.style.backgroundImage = TROPHY_GOLD;
-                    trophies.appendChild(trophy);
-                }
-            } else {
-                trophies.textContent = '—';
+            for (let i = 0; i < this.roundsToWin; i++) {
+                const slot = document.createElement('span');
+                const won = i < wins;
+                slot.className = won ? 'trophy-icon' : 'trophy-icon empty';
+                slot.style.backgroundImage = won ? TROPHY_GOLD : TROPHY_EMPTY;
+                trophies.appendChild(slot);
             }
             row.appendChild(trophies);
 
@@ -1210,6 +1223,12 @@ export class GameVSSimple {
 
     /** Big "3, 2, 1, GO!" beat before a round starts - the very first one included. */
     handleCountdown(data) {
+        // A countdown nobody has to wait for is only a decoration: until this,
+        // fighters were free to run, jump and shoot all through "3, 2, 1",
+        // so a round was already half-played by the time it started and no
+        // two clients agreed on where anyone was standing at "GO!".
+        this.freezeFighters(data.count !== 0);
+
         const overlay = document.getElementById('countdown-overlay');
         const number = document.getElementById('countdown-number');
         if (!overlay || !number) return;
@@ -1220,6 +1239,47 @@ export class GameVSSimple {
         clearTimeout(this._countdownHideTimer);
         if (data.count === 0) {
             this._countdownHideTimer = setTimeout(() => overlay.classList.remove('visible'), 700);
+        }
+    }
+
+    /**
+     * Holds every fighter simulated here - the local player and any bot - in
+     * place for the countdown.
+     *
+     * Gravity is deliberately left on: dropping onto the platform under the
+     * spawn point during "3, 2, 1" is exactly what should happen, and it means
+     * everyone is standing still on solid ground by "GO!" rather than still
+     * falling through the first tick of the round.
+     */
+    freezeFighters(frozen) {
+        this.fighterEntities().forEach((entity) => {
+            const network = entity.getComponent('networkPlayer');
+            if (!network || !network.simulated) return;
+
+            const property = entity.getComponent('property');
+            if (!property) return;
+
+            // A corpse stays a corpse: only handlePlayerRespawn hands movement
+            // back, and it has its own reasons for when.
+            property.movable = frozen ? false : property.isAlive !== false;
+
+            if (!frozen) return;
+
+            const velocity = entity.getComponent('velocity');
+            if (velocity) velocity.vx = 0;
+
+            // Otherwise a key held through the countdown is still buffered at
+            // "GO!" and spends the first jump nobody asked for.
+            const input = entity.getComponent('input');
+            if (input) input.jump = 0;
+            property.jumpBufferedAt = 0;
+        });
+
+        // Belt and braces: the thaw rides on the "GO!" beat, so a countdown
+        // whose last message never arrives must not leave the arena frozen.
+        clearTimeout(this._freezeReleaseTimer);
+        if (frozen) {
+            this._freezeReleaseTimer = setTimeout(() => this.freezeFighters(false), 1500);
         }
     }
 
@@ -1785,6 +1845,7 @@ export class GameVSSimple {
         }
         clearTimeout(this._roundBannerTimer);
         clearTimeout(this._countdownHideTimer);
+        clearTimeout(this._freezeReleaseTimer);
     }
 }
 
