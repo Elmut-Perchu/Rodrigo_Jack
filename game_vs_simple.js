@@ -1223,6 +1223,17 @@ export class GameVSSimple {
         if (data.roundsToWin) this.roundsToWin = data.roundsToWin;
         if (data.playerWins) this._playerWins = data.playerWins;
         this._winnerIds = data.winnerIds || null;
+
+        // The score screen has been reported wrong more than once while the
+        // referee's own answer measured correct on the wire, so the two are
+        // printed side by side: what arrived, and who this client thinks is
+        // in the arena to receive it. A mismatch between these two lists is
+        // the whole difference between "the server counted wrong" and "this
+        // client credited the wrong fighter", and one round now settles it.
+        console.log('🏆 [Score] server said', JSON.stringify(data.playerWins),
+            'winners', JSON.stringify(data.winnerIds),
+            '| this client knows', JSON.stringify(this.orderedPlayerIds()),
+            'and is', this.localPlayerId);
     }
 
     /**
