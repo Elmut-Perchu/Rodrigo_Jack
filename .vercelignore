@@ -1,0 +1,8 @@
+# Vercel auto-detects any *.go file with a main package and deploys it as a
+# serverless function, which was hijacking "/" instead of serving index.html.
+# These backends run on Render (see render.yaml), not Vercel - hide them from
+# Vercel's build entirely so it falls back to plain static hosting.
+main.go
+go.mod
+go.sum
+server/
