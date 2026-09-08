@@ -10,6 +10,7 @@ import { VSMovement } from './core/systems_vs/vs_movement_system.js';
 import { VSWrap } from './core/systems_vs/vs_wrap_system.js';
 import { VSCollision } from './core/systems_vs/vs_collision_system.js';
 import { VSRender } from './core/systems_vs/vs_render_system.js';
+import { VSFighterHud } from './core/systems_vs/vs_fighter_hud_system.js';
 import { VSBow } from './core/systems_vs/vs_bow_system.js';
 import { VSSpectre } from './core/systems_vs/vs_spectre_system.js';
 import { VSArrow } from './core/systems_vs/vs_arrow_system.js';
@@ -20,7 +21,13 @@ import { spawnSparks } from './core/systems_vs/vs_sparks.js';
 import { createArrow } from './create/arrow_create.js';
 import { createBot } from './create/bot_create.js';
 import { createSpectre } from './create/spectre_create.js';
-import { differentSwing } from './constants/vs_combat_constants.js';
+import { differentSwing, HEARTS, HALVES_PER_HEART, MAX_HEALTH } from './constants/vs_combat_constants.js';
+import { heartIcon } from './core/vs_pixel_icons.js';
+
+// Drawn once and reused by every card: the same two images for all four
+// fighters, so the browser decodes them once.
+const FULL_HEART = heartIcon('#e0464c');
+const EMPTY_HEART = heartIcon('#3a2430');
 import { paletteFor } from './constants/vs_palette.js';
 import { getBotLevel } from './constants/bot_constants.js';
 
@@ -90,6 +97,9 @@ export class GameVSSimple {
         this.arrowSystem = new VSArrow(this); // Arrow flight, impact, pickup
         this.addSystem(this.arrowSystem);
         this.addSystem(new VSRender(this));
+        // After the render pass: it draws on top of the fighters, using the
+        // positions that pass has just settled.
+        this.addSystem(new VSFighterHud(this));
         this.audio = new VSAudio(this);       // Reads the states VSRender just set
         this.addSystem(this.audio);
 
@@ -976,7 +986,7 @@ export class GameVSSimple {
         }
 
         const health = entity.getComponent('health');
-        if (health) health.currentHealth = data.health ?? 100;
+        if (health) health.currentHealth = data.health ?? MAX_HEALTH;
 
         const position = entity.getComponent('position');
         if (position) { position.x = data.x; position.y = data.y; }
@@ -1087,26 +1097,33 @@ export class GameVSSimple {
             const stats = document.createElement('div');
             stats.className = 'player-stats';
 
-            const hpRow = document.createElement('div');
-            hpRow.className = 'stat-row';
-            hpRow.innerHTML = '<span class="stat-label">HP</span><span class="hp-value">100</span>';
-            stats.appendChild(hpRow);
+            // Four hearts, each of which can be half spent. A row of hearts
+            // is read at a glance from across the screen; a number is not,
+            // and in a fight nobody has the time to.
+            const heartRow = document.createElement('div');
+            heartRow.className = 'heart-row';
+            const hearts = [];
+            for (let i = 0; i < HEARTS; i++) {
+                const heart = document.createElement('div');
+                heart.className = 'heart';
+                heart.style.backgroundImage = EMPTY_HEART;
 
-            const bar = document.createElement('div');
-            bar.className = 'health-bar';
-            const fill = document.createElement('div');
-            fill.className = 'health-fill';
-            fill.style.width = '100%';
-            bar.appendChild(fill);
-            stats.appendChild(bar);
+                const heartFill = document.createElement('div');
+                heartFill.className = 'heart-fill';
+                heartFill.style.backgroundImage = FULL_HEART;
+                heart.appendChild(heartFill);
 
-            let quiver = null;
+                heartRow.appendChild(heart);
+                hearts.push(heartFill);
+            }
+            stats.appendChild(heartRow);
+
             let spirit = null;
             if (isLocal) {
-                quiver = document.createElement('div');
-                quiver.className = 'stat-row';
-                quiver.innerHTML = '<span class="stat-label">Arrows</span><span class="quiver-value">0</span>';
-                stats.appendChild(quiver);
+                // The quiver is shown above the fighter's own head instead of
+                // here (see VSFighterHud): it is something you check while
+                // aiming, and looking away to a corner of the screen to count
+                // your arrows is exactly the wrong moment to look away.
 
                 // The spirit gauge. Only yours is shown: knowing how close an
                 // opponent is to a spectre would give away the one thing that
@@ -1133,13 +1150,12 @@ export class GameVSSimple {
             if (paletteComponent) {
                 card.style.borderColor = paletteComponent.primary;
                 name.style.color = paletteComponent.primary;
-                fill.style.backgroundColor = paletteComponent.primary;
             }
 
             card.appendChild(stats);
             host.appendChild(card);
 
-            this.hudCards.set(id, { card, fill, hp: hpRow.querySelector('.hp-value'), quiver, spirit });
+            this.hudCards.set(id, { card, hearts, spirit });
         });
 
         this.refreshHud();
@@ -1155,16 +1171,18 @@ export class GameVSSimple {
             const health = entity.getComponent('health');
             const property = entity.getComponent('property');
 
-            const current = health ? Math.max(0, health.currentHealth) : 0;
-            const max = health ? health.maxHealth || 100 : 100;
-            const pct = Math.max(0, Math.min(100, (current / max) * 100));
+            // Health is carried in half-hearts, so each heart is worth two
+            // and the remainder after the full ones decides the half.
+            const halves = health ? Math.max(0, health.currentHealth) : 0;
 
-            ui.fill.style.width = `${pct}%`;
-            ui.hp.textContent = String(current);
+            ui.hearts.forEach((heartFill, index) => {
+                const left = Math.max(0, Math.min(HALVES_PER_HEART, halves - index * HALVES_PER_HEART));
+                heartFill.style.width = `${(left / HALVES_PER_HEART) * 100}%`;
+            });
+
             ui.card.classList.toggle('dead', property ? property.isAlive === false : false);
         });
 
-        this.refreshQuiverHud();
         this.refreshSpectreHud();
         this.refreshPlayerCount();
     }
@@ -1192,22 +1210,6 @@ export class GameVSSimple {
         if (ui.spirit._label) {
             ui.spirit._label.textContent = state.ready ? 'READY' : `${pct}%`;
             ui.spirit._label.style.color = state.ready ? '#9b59b6' : '#ecf0f1';
-        }
-    }
-
-    refreshQuiverHud() {
-        if (!this.hudCards || !this.localPlayer) return;
-
-        const ui = this.hudCards.get(this.localPlayerId);
-        if (!ui || !ui.quiver) return;
-
-        const bowState = this.localPlayer.getComponent('bow_state');
-        if (!bowState) return;
-
-        const value = ui.quiver.querySelector('.quiver-value');
-        if (value) {
-            value.textContent = `${bowState.currentArrows} / ${bowState.maxArrows}`;
-            value.style.color = bowState.currentArrows === 0 ? '#e74c3c' : '#ecf0f1';
         }
     }
 
@@ -1274,7 +1276,8 @@ export class GameVSSimple {
         bowState.currentArrows = data.arrows;
         if (data.max !== undefined) bowState.maxArrows = data.max;
 
-        if (playerId === this.localPlayerId) this.refreshQuiverHud();
+        // The quiver is drawn above the fighter by VSFighterHud, which reads
+        // the count every frame, so nothing has to be repainted here.
     }
 
     /** The owner decided where its arrow landed; everyone else follows. */

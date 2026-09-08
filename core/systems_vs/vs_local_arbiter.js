@@ -1,4 +1,10 @@
 // core/systems_vs/vs_local_arbiter.js - Offline referee for bot matches
+import {
+    MELEE_DAMAGE,
+    ARROW_DAMAGE,
+    MAGIC_DAMAGE,
+    MAX_HEALTH
+} from '../../constants/vs_combat_constants.js';
 
 /**
  * Plays the part of the Go server for a match against the computer.
@@ -31,10 +37,6 @@ const DEFLECT_TOLERANCE = 170.0;
 // server treats one (server/game_logic.go isMagicHit).
 const MAGIC_RADIUS = 80.0;
 
-const MELEE_DAMAGE = 15;
-const ARROW_DAMAGE = 20;
-const MAGIC_DAMAGE = 25;
-
 // --- server/parry.go ---
 const PARRY_WINDOW = 220;        // ms
 const CLASH_RANGE_FACTOR = 1.35;
@@ -65,7 +67,7 @@ export class VSLocalArbiter {
         this.fighters.set(playerId, {
             name: name || 'Fighter',
             entity,
-            health: 100,
+            health: MAX_HEALTH,
             isAlive: true,
             quiver: STARTING_ARROWS
         });

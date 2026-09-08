@@ -51,7 +51,7 @@ export const BOT_LEVELS = {
         retrieveArrows: false,  // Does not bother collecting spent arrows
 
         keepsDistance: false,   // Does not back off to bow range
-        retreatBelowHp: 0,      // Never retreats
+        retreatBelowHalfHearts: 0,   // Never retreats
 
         spectreRange: 0         // Never channels a spirit
     },
@@ -76,7 +76,7 @@ export const BOT_LEVELS = {
         retrieveArrows: true,
 
         keepsDistance: false,
-        retreatBelowHp: 0,
+        retreatBelowHalfHearts: 0,
 
         spectreRange: 620       // Channels only when well out of reach
     },
@@ -101,7 +101,7 @@ export const BOT_LEVELS = {
         retrieveArrows: true,
 
         keepsDistance: true,
-        retreatBelowHp: 30,
+        retreatBelowHalfHearts: 2,   // under one heart
 
         spectreRange: 480
     },
@@ -126,7 +126,7 @@ export const BOT_LEVELS = {
         retrieveArrows: true,
 
         keepsDistance: true,
-        retreatBelowHp: 40,
+        retreatBelowHalfHearts: 3,   // under one and a half
 
         spectreRange: 360       // Confident enough to channel under pressure
     }

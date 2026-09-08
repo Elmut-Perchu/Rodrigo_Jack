@@ -15,6 +15,7 @@ import { BowState } from '../core/components/bow_state_component.js';
 import { SpectreState } from '../core/components/spectre_state_component.js';
 import { paletteFor } from '../constants/vs_palette.js';
 import { JUMP_STRENGTH } from '../constants/vs_movement_constants.js';
+import { MAX_HEALTH } from '../constants/vs_combat_constants.js';
 
 /**
  * Map network animation names to PlayerAnimation state names
@@ -84,9 +85,12 @@ export function createRemotePlayer(playerData, playerIndex = 0) {
     animationComponent.isFlipped = playerData.facingRight === false;
 
     // Health component
+    // Counted in half-hearts: eight of them make the four hearts the HUD
+    // draws. `??` rather than `||` because a fighter arriving on nought is
+    // dead, not new, and would otherwise be handed a full bar.
     entity.addComponent('health', {
-        maxHealth: 100,
-        currentHealth: playerData.health || 100
+        maxHealth: MAX_HEALTH,
+        currentHealth: playerData.health ?? MAX_HEALTH
     });
 
     // Property component (for collision, etc.)

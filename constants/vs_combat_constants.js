@@ -33,3 +33,22 @@ export function differentSwing(swing, otherSwing) {
 
     return SWING_CYCLE[(index + 1) % SWING_CYCLE.length];
 }
+
+/**
+ * Health, counted in hearts.
+ *
+ * Four of them, each worth two halves, so a fighter has eight units of life
+ * and every blow lands on a boundary you can see. The arena used to run on a
+ * hundred hit points knocked down 15 or 20 at a time - a number nobody reads
+ * mid-fight, and one that cannot be drawn as anything but a bar.
+ *
+ * The damage figures are chosen to keep the old pacing: a sword still needs
+ * about eight connections to finish someone, an arrow four, a spirit four.
+ */
+export const HEARTS = 4;
+export const HALVES_PER_HEART = 2;
+export const MAX_HEALTH = HEARTS * HALVES_PER_HEART;
+
+export const MELEE_DAMAGE = 1;   // half a heart
+export const ARROW_DAMAGE = 2;   // a whole one
+export const MAGIC_DAMAGE = 2;

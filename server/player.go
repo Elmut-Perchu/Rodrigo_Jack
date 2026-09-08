@@ -75,7 +75,7 @@ func NewPlayer(conn *websocket.Conn) *Player {
 		closeChan:       make(chan bool),
 		Animation:       "idle",
 		FacingRight:     true,
-		Health:          100,
+		Health:          MAX_HEALTH,
 		IsAlive:         true,
 		LastMessageTime: time.Now(),
 		MessageCount:    0,

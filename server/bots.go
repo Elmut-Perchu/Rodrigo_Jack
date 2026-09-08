@@ -38,7 +38,7 @@ func newBotPlayer(controller *Player, level, name string) *Player {
 		Connected:    true,
 		Animation:    "idle",
 		FacingRight:  true,
-		Health:       100,
+		Health:       MAX_HEALTH,
 		IsAlive:      true,
 		Quiver:       StartingArrows,
 	}

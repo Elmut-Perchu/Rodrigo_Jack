@@ -44,7 +44,13 @@ const (
 	MAGIC_RANGE  = 200.0
 	MAGIC_RADIUS = 80.0
 
-	MELEE_DAMAGE = 15
-	ARROW_DAMAGE = 20
-	MAGIC_DAMAGE = 25
+	// Health is counted in half-hearts: MAX_HEALTH of them make the four
+	// hearts the HUD draws (constants/vs_combat_constants.js, which must
+	// agree with these). A sword takes about eight connections to finish
+	// someone, an arrow or a spirit four - the pacing the old 15/20/25
+	// against a hundred points produced.
+	MAX_HEALTH   = 8
+	MELEE_DAMAGE = 1
+	ARROW_DAMAGE = 2
+	MAGIC_DAMAGE = 2
 )

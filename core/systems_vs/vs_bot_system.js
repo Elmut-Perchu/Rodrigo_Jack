@@ -1,5 +1,6 @@
 // core/systems_vs/vs_bot_system.js - Computer opponent
 import { System } from '../systems/system.js';
+import { MAX_HEALTH } from '../../constants/vs_combat_constants.js';
 import { VS_BOW } from '../../constants/vs_bow_constants.js';
 
 const TILE = 64;
@@ -234,7 +235,7 @@ export class VSBot extends System {
         }
 
         // Hurt and still armed: keep away and shoot.
-        if (level.retreatBelowHp > 0 && health <= level.retreatBelowHp && quiver > 0) {
+        if (level.retreatBelowHalfHearts > 0 && health <= level.retreatBelowHalfHearts && quiver > 0) {
             return distance < BOW_RANGE_MIN ? 'retreat' : 'shoot';
         }
 
@@ -654,6 +655,6 @@ export class VSBot extends System {
 
     healthOf(entity) {
         const health = entity.getComponent('health');
-        return health ? health.currentHealth : 100;
+        return health ? health.currentHealth : MAX_HEALTH;
     }
 }

@@ -323,7 +323,7 @@ func RespawnPlayer(room *Room, playerID string, spawnX, spawnY float64) {
 	}
 
 	// Reset player state
-	player.Health = 100
+	player.Health = MAX_HEALTH
 	player.IsAlive = true
 	player.X = spawnX
 	player.Y = spawnY
