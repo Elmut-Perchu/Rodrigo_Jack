@@ -50,6 +50,12 @@ type Player struct {
 	// Validation tracking
 	LastStateUpdate time.Time `json:"-"`      // For rate limiting and movement validation
 	Quiver          int       `json:"quiver"` // Arrows carried (see combat_vs.go)
+	// The anti-teleport budget: how full the travel bucket is, when it was
+	// last drained, and how many reports in a row have overflowed it. See
+	// TRAVEL_WINDOW and TELEPORT_STRIKES.
+	travelDistance  float64
+	travelDrainedAt time.Time
+	teleportStrikes int
 	// Session / reconnection tracking (see session.go)
 	SessionID  string      `json:"-"` // Persistent across reconnections
 	Connected  bool        `json:"connected"`
@@ -516,9 +522,12 @@ func (p *Player) handlePlayerState(msg *Message) {
 	}
 
 	// VALIDATION 3: Check movement distance (anti-teleportation)
-	timeDelta := float64(timeSinceLastUpdate) / 1000.0 // Convert to seconds
-	maxAllowedDistance := MAX_MOVEMENT_PER_SEC * timeDelta
-
+	//
+	// Judged as a draining budget rather than one report at a time: the
+	// distance comes off the client's clock and the elapsed time off ours, and
+	// those two only agree once the span is long enough for bunched arrivals
+	// to average out. See TRAVEL_WINDOW for the measurements.
+	//
 	// Measured the short way round each axis, so stepping through a passage
 	// counts as the few pixels it really is rather than the arena-wide jump it
 	// looks like. A genuine teleport across the middle is still the full
@@ -527,9 +536,48 @@ func (p *Player) handlePlayerState(msg *Message) {
 	dy := shortestDelta(y-p.Y, MAP_HEIGHT)
 	distance := math.Sqrt(dx*dx + dy*dy)
 
-	if distance > maxAllowedDistance {
-		log.Printf("[CHEAT] Player %s moved too far: %.2f pixels in %.3fs (max: %.2f)",
-			p.Name, distance, timeDelta, maxAllowedDistance)
+	// Pour this report's ground into the bucket, having first let it drain for
+	// however long it has been since the last one. Adding up each report's
+	// distance measures the path walked rather than the straight line between
+	// its ends, which is the right quantity and the stricter one: a fighter
+	// pacing back and forth spends their budget just as one running in a
+	// straight line does.
+	//
+	// The drain is clocked separately from LastStateUpdate, because that only
+	// advances on an accepted report and the bucket has to keep draining
+	// through a run of refused ones.
+	if p.travelDrainedAt.IsZero() {
+		p.travelDrainedAt = now
+	}
+	drained := MAX_MOVEMENT_PER_SEC * now.Sub(p.travelDrainedAt).Seconds()
+	p.travelDrainedAt = now
+	level := math.Max(0, p.travelDistance-drained)
+
+	if capacity := MAX_MOVEMENT_PER_SEC*TRAVEL_WINDOW + TRAVEL_SLACK; level+distance > capacity {
+		// The attempt is charged even though it is refused, or it would be
+		// free to retry: a refused report leaves the authoritative position
+		// where it was, so the very next report can claim the same ground
+		// again at no cost. Charging it holds the bucket at the brim, and a
+		// full bucket only lets someone through as fast as it drains - which
+		// is the speed limit this exists to impose. Capped there so that
+		// nobody can build a debt they spend the rest of the match paying off.
+		p.travelDistance = math.Min(level+distance, capacity)
+		p.teleportStrikes++
+
+		if p.teleportStrikes < TELEPORT_STRIKES {
+			// Suspicious, but not yet worth moving somebody's body over.
+			// Dropping it costs the player one stale frame; correcting on it
+			// would cost them a jump backwards for what may be one unlucky
+			// report.
+			debugf("[Validation] %s: %.0fpx would overflow a %.0fpx budget, strike %d of %d",
+				p.Name, level+distance, capacity, p.teleportStrikes, TELEPORT_STRIKES)
+			return
+		}
+
+		log.Printf("[CHEAT] Player %s moved too far: %.0fpx of travel against a %.0fpx budget",
+			p.Name, level+distance, capacity)
+
+		p.teleportStrikes = 0
 
 		// Send correction back to client
 		p.sendMessage("position_correction", map[string]interface{}{
@@ -540,6 +588,9 @@ func (p *Player) handlePlayerState(msg *Message) {
 		})
 		return
 	}
+
+	p.travelDistance = level + distance
+	p.teleportStrikes = 0
 
 	// All validations passed, accept the update
 	debugf("✅ [handlePlayerState] All validations passed! Updating %s: (%.1f, %.1f) -> (%.1f, %.1f)",

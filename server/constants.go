@@ -36,6 +36,55 @@ const (
 	MAX_MESSAGE_RATE = 60 // Maximum messages per second (60fps)
 	MIN_UPDATE_DELTA = 16 // Minimum milliseconds between updates (1000/60fps)
 
+	// The depth of the anti-teleport budget, in seconds of travel, and the
+	// slack on top of it in pixels.
+	//
+	// The budget is a bucket: every position report pours in the ground it
+	// claims to have covered, and the bucket drains steadily at
+	// MAX_MOVEMENT_PER_SEC. A fighter moving honestly pours in less than
+	// drains away and never fills it; one crossing the arena repeatedly fills
+	// it in a few reports. Its DEPTH is what absorbs bunched arrivals, and its
+	// DRAIN is what makes sustained impossible speed impossible.
+	//
+	// The check used to be made one report at a time, and that compared two
+	// different clocks. The client integrates its physics against real time and
+	// reports where it truly is every 50ms, so the DISTANCE it covered is a
+	// fact about the sending clock. The TIME it was divided by was the gap
+	// between ARRIVALS, and the network does not deliver every 50ms - a busy
+	// moment queues two reports and hands them over back to back.
+	//
+	// Judged that way an honest report is measured against the budget for a
+	// journey much shorter than the one it actually made. Measured: a fighter
+	// falling at terminal velocity, reporting honestly at 20Hz, had 48% of its
+	// reports rejected once arrivals bunched to 25ms apart - and every
+	// rejection sends a position_correction, which snaps the player's own body
+	// backwards on their screen. That is the teleporting players reported, and
+	// it came from the anti-cheat rather than from any cheat.
+	//
+	// Over a second the two clocks agree again: bunching moves reports around
+	// in time, it does not create travel. A bucket a second deep therefore
+	// swallows any amount of bunching while still refusing anyone who is
+	// genuinely covering more ground than a fighter can.
+	//
+	// Two other shapes were tried and are recorded here because both look
+	// right and are not. A floor under the per-report budget grants a fixed
+	// allowance on EVERY report, so anything short enough to fit inside it can
+	// be repeated forever - corner to corner is only 320px measured through
+	// the wrap passage, and a 375px floor let a fighter flick between the ends
+	// of the arena at 20Hz untouched. A window that resets outright is strict
+	// at exactly the wrong moment: for the first report after each reset the
+	// allowance is only the slack, so an honest fighter returning from a
+	// respawn or a stall is judged hardest.
+	TRAVEL_WINDOW = 1.0
+	TRAVEL_SLACK  = 100.0
+
+	// How many suspicious reports in a row it takes before a player is moved.
+	//
+	// Correcting on the first one means any single unlucky report is worth a
+	// visible jump. A real teleport does not arrive alone, so waiting for a
+	// run of them costs nothing and makes an isolated false positive free.
+	TELEPORT_STRIKES = 3
+
 	// Room constants
 	MAX_PLAYERS_PER_ROOM = 4
 	MIN_PLAYERS_TO_START = 2
