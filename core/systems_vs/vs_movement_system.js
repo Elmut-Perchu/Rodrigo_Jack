@@ -23,19 +23,13 @@ export class VSMovement extends System {
                 // Simulated here (local player or bot): integrate velocity
                 position.x += velocity.vx * deltaTime;
                 position.y -= velocity.vy * deltaTime;
-            } else if (networkPlayer) {
-                // Remote player: interpolate from buffer
-                const interp = entity.getComponent('interpolation');
-                if (interp) {
-                    const interpolated = interp.getInterpolatedPosition();
-                    if (interpolated) {
-                        position.x = interpolated.x;
-                        position.y = interpolated.y;
-                    }
-                }
-            } else {
-                // Non-player entity (like tiles) - don't move
             }
+
+            // A networked opponent is placed from their interpolation buffer
+            // instead, and not here: that is drawing rather than simulating,
+            // and it belongs on the frame cadence rather than on this fixed
+            // step (see VSInterpolate). Anything else - a tile - does not
+            // move at all.
         });
     }
 }

@@ -8,10 +8,6 @@ const BASE_PATH = (typeof window !== 'undefined' && window.location.pathname.inc
     ? '../'
     : './';
 
-// The looping background track. Registered on the local channel only - the
-// remote one exists to make other fighters quieter, which is meaningless for
-// something that belongs to the room rather than to anyone in it.
-const MUSIC_ID = 'arena_music';
 
 /*
  * How loud the arena is overall lives in core/vs_prefs.js, because the player
@@ -68,6 +64,7 @@ export class VSAudio extends System {
         this.audio.setMasterVolume(level);
         this.remoteAudio.setMasterVolume(level);
         this.clash.volume = level;
+        if (this.music) this.music.setMaster(level);
     }
 
     /**
@@ -78,58 +75,84 @@ export class VSAudio extends System {
      * load of a page served from a free tier, and this one says the same thing
      * in 1.4MB.
      *
-     * Low, and on the music category, so the pause menu's slider moves it with
-     * everything else and a fight never has to be won over the soundtrack.
-     *
-     * Autoplay is not assumed: a page reached by a link has had no gesture on
-     * it yet and the browser will refuse. Audio.playSound already watches for
-     * that on the music category and starts the track on the first interaction
-     * instead, which is the keypress that begins the match anyway.
+     * Level from the same measurement as the samples above: the file runs at
+     * -20.8 LUFS, which is 24dB hotter than the swords, so it comes down 23dB
+     * to sit as a bed a few decibels under the action rather than on top of
+     * it. That distance is what makes a soundtrack rather than a competitor.
      */
     startMusic() {
-        this.audio.addSound(MUSIC_ID, `${BASE_PATH}assets/sounds/music/ambient_4.mp3`,
-            // Sits high on its own scale because the music category is already
-            // damped to 0.4 and the master defaults to 0.45 - the three
-            // multiply, and anything lower here was inaudible.
-            { volume: 0.9, loop: true, category: 'music' });
-        this.audio.playSound(MUSIC_ID, { fadeIn: 1200 });
+        this.music = new MusicLoop(`${BASE_PATH}assets/sounds/music/ambient_4.mp3`, 0.07);
+        this.music.setMaster(getVolume());
+        this.music.start();
     }
 
     /** Called when the arena is torn down, so a finished match stops listening. */
     dispose() {
         if (this.stopFollowingVolume) this.stopFollowingVolume();
-        this.audio.stopSound(MUSIC_ID, { fadeOut: 600 });
+        if (this.music) this.music.stop();
     }
 
+    /*
+     * The mix, measured rather than guessed.
+     *
+     * The samples were gathered from wildly different sources and are nowhere
+     * near each other in level - ffmpeg puts them 24dB apart - so a flat 0.8
+     * on all of them was not a balance, it was whatever the files happened to
+     * be. The three sword blows landed 17dB apart from one another, and the
+     * spirit was 24dB above them: loud enough to bury the fight it belongs to.
+     *
+     * Each figure below is that file's own measurement corrected to a shared
+     * target, sustained sounds judged on integrated loudness and short blows
+     * on peak, which is what the ear uses for each:
+     *
+     *   file          measured               correction   result
+     *   attack1.wav   -6.2dB peak            -7.8dB       0.42
+     *   attack2.wav   -11.8dB peak           -2.2dB       0.78
+     *   attack3.wav   -23.4dB peak           +9.4dB       1.00 (capped)
+     *   hurt.wav      -32.5dB peak           +18.5dB      1.00 (capped)
+     *   death.wav     -21.7dB peak           +7.7dB       1.00 (capped)
+     *   roll.wav      -40.4 LUFS             +2.4dB       0.90
+     *   jump.wav      -36.9 LUFS             -1.1dB       0.85
+     *   run.wav       -39.1 LUFS             -2.9dB       0.70
+     *   magic.wav     -12.4 LUFS             -21dB        0.09
+     *
+     * Three of them are already quieter than the target and cannot be raised
+     * - an element's volume only attenuates - so they sit at 1.0 and are as
+     * loud as they will ever be. Nothing here changes the overall level of
+     * the arena, only the distances between its parts.
+     */
     registerSounds(audio) {
-        // Movement - identical ids and volumes to Adventure mode
+        // Movement. Both loops sit under the one-shots on purpose: they play
+        // continuously, and continuous beats transient for attention.
         audio.addSound('player_idle', `${BASE_PATH}assets/sounds/player/idle.wav`,
             { volume: 0.2, loop: true, category: 'sfx' });
         audio.addSound('player_run', `${BASE_PATH}assets/sounds/player/run.wav`,
-            { volume: 0.9, loop: true, category: 'sfx' });
+            { volume: 0.7, loop: true, category: 'sfx' });
         audio.addSound('player_jump', `${BASE_PATH}assets/sounds/player/jump.wav`,
-            { volume: 0.9, category: 'sfx', cooldown: 0.3 });
+            { volume: 0.85, category: 'sfx', cooldown: 0.3 });
 
         // Actions
         audio.addSound('player_roulade', `${BASE_PATH}assets/sounds/player/roll.wav`,
-            { volume: 0.8, category: 'sfx' });
+            { volume: 0.9, category: 'sfx' });
         audio.addSound('player_attack1', `${BASE_PATH}assets/sounds/player/attack1.wav`,
-            { volume: 0.8, category: 'sfx' });
+            { volume: 0.42, category: 'sfx' });
         audio.addSound('player_attack2', `${BASE_PATH}assets/sounds/player/attack2.wav`,
-            { volume: 0.8, category: 'sfx' });
+            { volume: 0.78, category: 'sfx' });
         audio.addSound('player_attack3', `${BASE_PATH}assets/sounds/player/attack3.wav`,
-            { volume: 0.8, category: 'sfx' });
+            { volume: 1.0, category: 'sfx' });
 
         // The spirit gauge, spent. The project has no player-side magic
-        // sample but the enemy one is exactly the right timbre for a wraith.
+        // sample but the enemy one is exactly the right timbre for a wraith -
+        // it is also five sustained seconds peaking a decibel below clipping,
+        // hence by far the largest correction in the table.
         audio.addSound('spectre_cast', `${BASE_PATH}assets/sounds/enemy/magic.wav`,
-            { volume: 0.75, category: 'sfx', cooldown: 0.2 });
+            { volume: 0.09, category: 'sfx', cooldown: 0.2 });
 
         // Damage
         audio.addSound('player_hurt', `${BASE_PATH}assets/sounds/player/hurt.wav`,
-            { volume: 0.9, category: 'sfx' });
+            { volume: 1.0, category: 'sfx' });
         audio.addSound('player_death', `${BASE_PATH}assets/sounds/player/death.wav`,
-            { volume: 0.9, category: 'sfx' });
+            { volume: 1.0, category: 'sfx' });
     }
 
     update(deltaTime) {
@@ -202,6 +225,159 @@ export class VSAudio extends System {
     /** Frees the looping tracks when a player leaves. */
     forgetEntity(entity) {
         this.lastStates.delete(entity.uuid);
+    }
+}
+
+/**
+ * A background track that actually loops.
+ *
+ * `<audio loop>` on an MP3 does not: the format carries encoder padding at
+ * both ends that the decoder cannot see, so every lap through a 61-second
+ * track lands a short silence in the middle of the arena, once a minute,
+ * forever. Anything short enough to notice is exactly long enough to be
+ * heard as a fault.
+ *
+ * Two elements playing the same file solve both that and the seam itself:
+ * the second is started a few seconds before the first runs out and the pair
+ * are crossfaded, so the loop point is a swell rather than a join. It also
+ * keeps working whatever the file format, which a re-encode would not.
+ */
+class MusicLoop {
+    constructor(src, volume = 1, crossfadeMs = 2600) {
+        this.src = src;
+        this.baseVolume = volume;
+        this.crossfadeMs = crossfadeMs;
+        this.master = 1;
+        this.stopped = false;
+        this.current = 0;
+        this.waitingForGesture = false;
+
+        this.elements = [this.build(), this.build()];
+    }
+
+    build() {
+        const element = new window.Audio(this.src);
+        element.preload = 'auto';
+        element.volume = 0;
+        // Never the element's own loop: the whole point is to take the lap
+        // over ourselves before it can be reached.
+        element.loop = false;
+        return element;
+    }
+
+    /** Where a fully faded-in track should sit right now. */
+    level() {
+        return Math.max(0, Math.min(1, this.baseVolume * this.master));
+    }
+
+    setMaster(master) {
+        this.master = master;
+        // Fades interpolate a factor rather than an absolute level, so a
+        // slider dragged mid-crossfade is followed instead of overridden.
+        this.elements.forEach(element => {
+            if (element._factor === undefined) return;
+            element.volume = element._factor * this.level();
+        });
+    }
+
+    start() {
+        if (this.stopped) return;
+        const element = this.elements[this.current];
+        element.currentTime = 0;
+        this.fade(element, 0, 1, 1400);
+        this.play(element);
+        this.armHandover(element);
+    }
+
+    stop() {
+        this.stopped = true;
+        this.elements.forEach(element => {
+            clearInterval(element._fadeTimer);
+            if (element._onTime) element.removeEventListener('timeupdate', element._onTime);
+            element.pause();
+        });
+    }
+
+    /**
+     * Watches for the end of the track through timeupdate rather than a
+     * timer: duration is not known until the metadata has loaded, and a
+     * stalled download would leave a timer firing against a track that is
+     * nowhere near finished.
+     */
+    armHandover(element) {
+        const onTime = () => {
+            if (this.stopped || !(element.duration > 0)) return;
+            if (element.duration - element.currentTime > this.crossfadeMs / 1000) return;
+            element.removeEventListener('timeupdate', onTime);
+            element._onTime = null;
+            this.handover();
+        };
+        element._onTime = onTime;
+        element.addEventListener('timeupdate', onTime);
+    }
+
+    handover() {
+        if (this.stopped) return;
+
+        const outgoing = this.elements[this.current];
+        this.current = 1 - this.current;
+        const incoming = this.elements[this.current];
+
+        incoming.currentTime = 0;
+        this.fade(incoming, 0, 1, this.crossfadeMs);
+        this.play(incoming);
+        this.armHandover(incoming);
+
+        this.fade(outgoing, 1, 0, this.crossfadeMs, () => outgoing.pause());
+    }
+
+    fade(element, from, to, ms, done) {
+        clearInterval(element._fadeTimer);
+
+        const steps = Math.max(1, Math.round(ms / 50));
+        let step = 0;
+
+        element._factor = from;
+        element.volume = from * this.level();
+
+        element._fadeTimer = setInterval(() => {
+            step++;
+            const factor = from + (to - from) * (step / steps);
+            element._factor = factor;
+            element.volume = Math.max(0, Math.min(1, factor * this.level()));
+
+            if (step >= steps) {
+                clearInterval(element._fadeTimer);
+                element._fadeTimer = null;
+                if (done) done();
+            }
+        }, 50);
+    }
+
+    /**
+     * A page reached by a link has had no gesture on it yet, and the browser
+     * will refuse to play. Rather than give up, wait for the first key or
+     * click - which in an arena is the player starting to fight anyway.
+     */
+    play(element) {
+        const promise = element.play();
+        if (!promise || !promise.catch) return;
+        promise.catch(() => this.waitForGesture());
+    }
+
+    waitForGesture() {
+        if (this.waitingForGesture || this.stopped) return;
+        this.waitingForGesture = true;
+
+        const go = () => {
+            window.removeEventListener('pointerdown', go);
+            window.removeEventListener('keydown', go);
+            this.waitingForGesture = false;
+            if (!this.stopped) this.play(this.elements[this.current]);
+        };
+
+        window.addEventListener('pointerdown', go);
+        window.addEventListener('keydown', go);
     }
 }
 

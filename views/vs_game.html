@@ -621,7 +621,7 @@
                 <div class="winner-name" id="winner-name">Player 1 Wins!</div>
                 <div class="scoreboard" id="match-scoreboard"></div>
                 <div class="game-over-buttons">
-                    <button class="btn-game-over btn-lobby" id="btn-lobby">Back to Lobby</button>
+                    <button class="btn-game-over btn-lobby" id="btn-lobby">Back to Rooms</button>
                     <button class="btn-game-over btn-menu" id="btn-menu">Main Menu</button>
                 </div>
             </div>
@@ -675,13 +675,11 @@
         function rematchUrl() {
             if (isBotMatch) return `vs_game.html?mode=bot&level=${encodeURIComponent(botLevel)}`;
 
-            // The room code has to travel with it. Sent to a bare vs_lobby.html
-            // the page has nothing to rejoin and bounces straight back out with
-            // "No room code provided", which is what the button looked like it
-            // was doing on purpose.
-            return roomCode
-                ? `vs_lobby.html?room=${encodeURIComponent(roomCode)}`
-                : 'vs_room_browser.html';
+            // The room browser, not the lobby of the room just left. That room
+            // has a match in it - possibly still running for the others - and
+            // walking back into it is not what leaving it was for. The browser
+            // is where a new one is picked, or the old one rejoined on purpose.
+            return 'vs_room_browser.html';
         }
 
         async function initializeGame() {

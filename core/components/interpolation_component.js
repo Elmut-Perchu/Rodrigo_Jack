@@ -6,8 +6,27 @@ export class Interpolation extends Component {
     constructor() {
         super();
         this.buffer = []; // State buffer for interpolation
-        this.bufferDelay = 100; // ms delay for smooth interpolation
-        this.maxBufferSize = 10;
+
+        // How far behind the newest state the fighter is drawn.
+        //
+        // This is the whole budget for the network being uneven. States leave
+        // the server every 50ms but do not arrive every 50ms, and any gap
+        // longer than this budget leaves nothing left to interpolate towards:
+        // the fighter freezes on the newest sample until the next one lands
+        // and then catches up in one step. At 100ms a single late packet did
+        // it, which on a free-tier server across an ocean is most of them.
+        // 150ms buys two.
+        this.bufferDelay = 150;
+
+        // Deep enough that the sample being interpolated FROM is never the
+        // one pushed out of the far end: 24 states is 1.2s of history against
+        // a 150ms delay.
+        this.maxBufferSize = 24;
+
+        // Where to draw a fighter with nothing in the buffer yet - straight
+        // after a respawn, say. Without it an empty buffer means "no answer",
+        // and VSMovement leaves the body at whatever it last did.
+        this.held = null;
 
         // Arena size, when the map's edges are passages rather than walls.
         // Left at zero the interpolation is an ordinary straight line, which
@@ -24,12 +43,20 @@ export class Interpolation extends Component {
     }
 
     addState(state) {
+        const timestamp = state.timestamp || Date.now();
+
+        // getInterpolatedPosition scans the buffer expecting it to run in
+        // time order. A state stamped no later than the one already at the
+        // end would break that scan, and it has nothing new to say anyway.
+        const newest = this.buffer[this.buffer.length - 1];
+        if (newest && timestamp <= newest.timestamp) return;
+
         this.buffer.push({
             x: state.x,
             y: state.y,
             vx: state.vx || 0,
             vy: state.vy || 0,
-            timestamp: state.timestamp || Date.now()
+            timestamp
         });
 
         // Keep buffer from growing too large
@@ -38,8 +65,23 @@ export class Interpolation extends Component {
         }
     }
 
+    /**
+     * Drops the history and pins the fighter somewhere known - a respawn, or
+     * any other moment the server moves a body rather than it moving itself.
+     *
+     * The old states have to go: they describe a journey that no longer
+     * happened, and interpolating out of them drags the fighter back across
+     * the arena from wherever they died.
+     */
+    reset(x, y) {
+        this.buffer.length = 0;
+        this.held = { x, y };
+    }
+
     getInterpolatedPosition() {
-        if (this.buffer.length === 0) return null;
+        if (this.buffer.length === 0) {
+            return this.held ? { x: this.held.x, y: this.held.y } : null;
+        }
         if (this.buffer.length === 1) {
             return {
                 x: this.buffer[0].x,

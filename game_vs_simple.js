@@ -12,6 +12,7 @@ import { VSGravity } from './core/systems_vs/vs_gravity_system.js';
 import { VSMovement } from './core/systems_vs/vs_movement_system.js';
 import { VSWrap } from './core/systems_vs/vs_wrap_system.js';
 import { VSCollision } from './core/systems_vs/vs_collision_system.js';
+import { VSInterpolate } from './core/systems_vs/interpolation_system.js';
 import { VSRender } from './core/systems_vs/vs_render_system.js';
 import { VSFighterHud } from './core/systems_vs/vs_fighter_hud_system.js';
 import { VSBow } from './core/systems_vs/vs_bow_system.js';
@@ -95,6 +96,9 @@ export class GameVSSimple {
         this.roundReadySent = false;
         this._roundReadyCount = 0;
         this._roundReadyTotal = 0;
+        // Server clock -> local clock, for the interpolation timeline. Learnt
+        // from the state broadcasts themselves (see serverToLocal).
+        this._serverClockOffset = null;
         this._countdownHideTimer = null;
         this._freezeReleaseTimer = null;
 
@@ -129,6 +133,10 @@ export class GameVSSimple {
         this.addSystem(new VSCollision(this));
         this.arrowSystem = new VSArrow(this); // Arrow flight, impact, pickup
         this.addSystem(this.arrowSystem);
+        // Opponents are placed from their buffer here, on the frame cadence
+        // rather than the physics step, and so immediately before the frame
+        // that draws them.
+        this.addSystem(new VSInterpolate(this));
         this.addSystem(new VSRender(this));
         // After the render pass: it draws on top of the fighters, using the
         // positions that pass has just settled.
@@ -713,15 +721,47 @@ export class GameVSSimple {
     }
 
     /**
+     * Turns a server timestamp into a local one, on a timeline that does not
+     * wobble.
+     *
+     * States used to be stamped on arrival instead. That is defensible - the
+     * two clocks are unrelated, and the buffer compares against Date.now() -
+     * but it writes every hiccup of the network straight into the animation:
+     * two states sent 50ms apart and arriving 5ms apart get stamped 5ms
+     * apart, so the fighter is asked to cover 50ms of ground in 5ms and does
+     * it in one visible hop. Those are the little jumps.
+     *
+     * The offset is tracked as the smallest difference seen, because the
+     * least-delayed packet is the one carrying the least queueing and so the
+     * closest reading of the true offset. It is allowed to creep back up very
+     * slowly so that two drifting clocks are followed rather than latched
+     * onto one lucky early packet for the rest of the match.
+     */
+    serverToLocal(serverTimestamp) {
+        if (!(serverTimestamp > 0)) return Date.now();
+
+        const sample = Date.now() - serverTimestamp;
+
+        if (this._serverClockOffset === null || this._serverClockOffset === undefined) {
+            this._serverClockOffset = sample;
+        } else if (sample < this._serverClockOffset) {
+            this._serverClockOffset = sample;
+        } else {
+            this._serverClockOffset += (sample - this._serverClockOffset) * 0.01;
+        }
+
+        return serverTimestamp + this._serverClockOffset;
+    }
+
+    /**
      * Authoritative 20Hz state broadcast.
      *
-     * Remote players feed the interpolation buffer. States are stamped with the
-     * local clock on purpose: the buffer compares against Date.now(), so using
-     * the server clock would break interpolation whenever the two machines
-     * disagree.
+     * Remote players feed the interpolation buffer, on the server's own
+     * timeline rather than on arrival times (see serverToLocal).
      */
     handleGameStateSync(data) {
         const players = data.players || [];
+        const stamp = this.serverToLocal(data.timestamp);
 
         let hudDirty = false;
 
@@ -775,7 +815,7 @@ export class GameVSSimple {
                     y: playerData.y,
                     vx: playerData.vx || 0,
                     vy: playerData.vy || 0,
-                    timestamp: Date.now()
+                    timestamp: stamp
                 });
             }
 
@@ -1102,16 +1142,10 @@ export class GameVSSimple {
         // Remote fighters are drawn from the interpolation buffer, which still
         // holds where the body was before it fell: left alone it would glide
         // the corpse back across the arena before snapping to the new spawn.
-        //
-        // Emptied outright it is no better, because an empty buffer means
-        // getInterpolatedPosition() returns nothing at all and VSMovement
-        // leaves the body wherever it last stood. Seeding it with the spawn
-        // gives the first real state something to blend out of.
+        // reset() drops that history and pins them on the spawn until the
+        // first real state arrives.
         const interp = entity.getComponent('interpolation');
-        if (interp && interp.buffer) {
-            interp.buffer.length = 0;
-            interp.addState({ x: data.x, y: data.y, vx: 0, vy: 0, timestamp: Date.now() });
-        }
+        if (interp && typeof interp.reset === 'function') interp.reset(data.x, data.y);
 
         this.refreshHud();
     }
