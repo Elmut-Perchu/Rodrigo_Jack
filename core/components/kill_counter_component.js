@@ -34,6 +34,12 @@ export class KillCounter extends Component {
     }
 
     updateDisplay(count) {
+        // Écrit seulement quand le nombre change. Le système appelle ceci à
+        // chaque frame, et réécrire un textContent identique invalide quand
+        // même le layout de l'élément - soixante fois par seconde pour un
+        // compteur qui bouge une fois par minute.
+        if (count === this.shown) return;
+        this.shown = count;
         this.countDisplay.textContent = `Ennemis vaincus: ${count}`;
     }
 }

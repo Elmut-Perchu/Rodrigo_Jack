@@ -59,9 +59,19 @@ export class TimerSystem extends System {
             color = '#FF8C00';
         }
 
-        // Mettre à jour l'affichage
-        this.timerDisplay.textContent = `Temps: ${timeText}`;
-        this.timerDisplay.style.color = color;
+        // Mettre à jour l'affichage - seulement quand il change vraiment.
+        // Le texte tourne à la seconde et la couleur encore moins souvent,
+        // alors que ceci s'exécute à chaque frame: réécrire la même chaîne
+        // relance quand même le layout de l'élément.
+        const label = `Temps: ${timeText}`;
+        if (label !== this.shownLabel) {
+            this.shownLabel = label;
+            this.timerDisplay.textContent = label;
+        }
+        if (color !== this.shownColor) {
+            this.shownColor = color;
+            this.timerDisplay.style.color = color;
+        }
 
         // Vérifier si le temps est écoulé
         if (timer.currentTime <= 0) {

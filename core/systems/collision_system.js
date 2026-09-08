@@ -2,6 +2,21 @@
 import { System } from './system.js';
 import { dlog } from '../debug_log.js';
 
+/**
+ * Resolves overlaps: bodies against the scenery, and bodies against each other.
+ *
+ * The scenery is the expensive half. Every moving body used to walk the entire
+ * entity list twice - once looking for tiles and once for everything else -
+ * asking each entity whether it was a tile. On a map with 280 of them that is
+ * some six thousand component lookups a frame to find the two or three tiles
+ * anywhere near the player's feet.
+ *
+ * The list is now partitioned once per frame and every candidate tile gets a
+ * four-comparison box test before anything is measured properly. The box test
+ * is exactly equivalent to the full one - a tile whose box is further away
+ * than the radius cannot possibly overlap the circle - so nothing about the
+ * result changes, only the work done to reach it.
+ */
 export class Collision extends System {
     update() {
         const entities = Array.from(this.entities);
@@ -13,6 +28,21 @@ export class Collision extends System {
                 property.isCollided = false;
             }
         });
+
+        // Partitioned once, then reused by every body below.
+        const solidTiles = [];
+        const circleActors = [];
+        let player = null;
+
+        for (const entity of entities) {
+            if (entity.getComponent('tile')) {
+                const property = entity.getComponent('property');
+                if (property && property.solid) solidTiles.push(entity);
+                continue;
+            }
+            if (entity.getComponent('circle_hitbox')) circleActors.push(entity);
+            if (!player && entity.getComponent('input')) player = entity;
+        }
 
         // Traiter les collisions pour chaque entité
         for (const entity of entities) {
@@ -35,14 +65,14 @@ export class Collision extends System {
 
             // Traiter différemment les entités avec et sans hitbox circulaire
             if (hitbox) {
-                this.handleCircleCollisions(entity, entities);
+                this.handleCircleCollisions(entity, solidTiles, circleActors);
             } else {
-                this.handleRectangleCollisions(entity, entities);
+                this.handleRectangleCollisions(entity, player);
             }
         }
     }
 
-    handleCircleCollisions(entity, entities) {
+    handleCircleCollisions(entity, solidTiles, circleActors) {
         const position = entity.getComponent('position');
         const visual = entity.getComponent('visual');
         const velocity = entity.getComponent('velocity');
@@ -55,29 +85,33 @@ export class Collision extends System {
         const circleRadius = hitbox.collisionRadius;
 
         // 1. Collisions avec les tiles
-        for (const other of entities) {
-            if (entity === other || !other.getComponent('tile')) continue;
+        //
+        // The reach of the circle, as a box. Anything outside it is rejected
+        // in four comparisons, without allocating or taking a square root.
+        const reachLeft = circleCenter.x - circleRadius;
+        const reachRight = circleCenter.x + circleRadius;
+        const reachTop = circleCenter.y - circleRadius;
+        const reachBottom = circleCenter.y + circleRadius;
 
+        for (const other of solidTiles) {
             const tilePos = other.getComponent('position');
             const tileVisual = other.getComponent('visual');
-            const tileProperty = other.getComponent('property');
 
-            if (!tilePos || !tileVisual || !tileProperty.solid) continue;
+            if (!tilePos || !tileVisual) continue;
 
-            const rect = {
-                left: tilePos.x,
-                right: tilePos.x + tileVisual.width,
-                top: tilePos.y,
-                bottom: tilePos.y + tileVisual.height,
-            };
+            const left = tilePos.x;
+            const right = tilePos.x + tileVisual.width;
+            const top = tilePos.y;
+            const bottom = tilePos.y + tileVisual.height;
 
-            const closestPoint = {
-                x: Math.max(rect.left, Math.min(circleCenter.x, rect.right)),
-                y: Math.max(rect.top, Math.min(circleCenter.y, rect.bottom)),
-            };
+            if (right < reachLeft || left > reachRight) continue;
+            if (bottom < reachTop || top > reachBottom) continue;
 
-            const dx = circleCenter.x - closestPoint.x;
-            const dy = circleCenter.y - closestPoint.y;
+            const closestX = Math.max(left, Math.min(circleCenter.x, right));
+            const closestY = Math.max(top, Math.min(circleCenter.y, bottom));
+
+            const dx = circleCenter.x - closestX;
+            const dy = circleCenter.y - closestY;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance < circleRadius) {
@@ -112,14 +146,16 @@ export class Collision extends System {
                     position.y = position.y + normalY * overlap;
                 }
 
-                visual.div.style.left = `${position.x}px`;
-                visual.div.style.top = `${position.y}px`;
+                // The div is deliberately not written here. Render runs three
+                // systems later in the same frame and paints whatever the
+                // position ended up being - writing it now only means writing
+                // it twice, and a second write is a second layout.
             }
         }
 
         // 2. Collisions avec les autres entités circulaires
-        for (const other of entities) {
-            if (entity === other || other.getComponent('tile')) continue;
+        for (const other of circleActors) {
+            if (entity === other) continue;
 
             // CRITICAL FIX: In VS mode, skip player-to-player collisions
             // Remote players are controlled by server, collision would cause "prison" effect
@@ -155,12 +191,9 @@ export class Collision extends System {
                 if (propertyB?.movable) {
                     posB.x += normalX * overlap * moveRatio;
                     posB.y += normalY * overlap * moveRatio;
-                    visualB.div.style.left = `${posB.x}px`;
-                    visualB.div.style.top = `${posB.y}px`;
                 }
 
-                visual.div.style.left = `${position.x}px`;
-                visual.div.style.top = `${position.y}px`;
+                // Both divs are left to Render, as above.
 
                 property.isCollided = true;
                 propertyB.isCollided = true;
@@ -168,13 +201,12 @@ export class Collision extends System {
         }
     }
 
-    handleRectangleCollisions(entity, entities) {
+    handleRectangleCollisions(entity, player) {
+        if (!player) return;
+
         const position = entity.getComponent('position');
         const visual = entity.getComponent('visual');
         const property = entity.getComponent('property');
-
-        const player = entities.find((e) => e.getComponent('input'));
-        if (!player) return;
 
         const playerPos = player.getComponent('position');
         const playerVisual = player.getComponent('visual');

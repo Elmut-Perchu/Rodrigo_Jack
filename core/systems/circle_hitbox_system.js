@@ -1,10 +1,28 @@
 // core/systems/circle_hitbox_system.js
 import { System } from './system.js';
+import { DEBUG_VERBOSE } from '../debug_log.js';
 
+/**
+ * Round hitboxes: who is touching whom, and who is within reach of a swing.
+ *
+ * Only a handful of things in a level carry one - the player, the enemies, the
+ * collectibles. The scenery does not. That matters, because the check is
+ * pairwise: run over every entity, and a map with 280 tiles turns ten fighters
+ * into ten *thousand* pair tests a frame, of which all but a hundred are a
+ * wall being compared with another wall. The list of entities that actually
+ * carry a hitbox is gathered once per frame instead, which is what the loop
+ * always meant.
+ *
+ * The debug circles are drawn only when tracing is on (localStorage rjDebug,
+ * the same switch as core/debug_log.js). They are painted transparent, so on
+ * an ordinary run they were three invisible divs per fighter, created and
+ * repositioned sixty times a second to show nobody anything.
+ */
 export class CircleHitbox extends System {
     constructor() {
         super();
         this.gameWorld = document.querySelector('.game-world');
+        this.showCircles = DEBUG_VERBOSE;
     }
 
     update() {
@@ -16,35 +34,46 @@ export class CircleHitbox extends System {
                 property.collidingWith.clear(); // Vider la liste des collisions
             }
         });
+
+        // Gathered once, then used for both halves of the pairwise test.
+        const actors = [];
         this.entities.forEach(entity => {
+            if (entity.getComponent('circle_hitbox')) actors.push(entity);
+        });
+
+        actors.forEach(entity => {
             const hitbox = entity.getComponent('circle_hitbox');
             const position = entity.getComponent('position');
             const visual = entity.getComponent('visual');
             const property = entity.getComponent('property');
 
-            if (!hitbox || !position || !visual || !property) return;
+            if (!position || !visual || !property) return;
 
-            // Initialiser les cercles si nécessaire
-            if (!hitbox.circles.collision) {
-                hitbox.initDebugCircles(this.gameWorld);
-            }
-
-            // Mettre à jour la position des cercles
             const center = hitbox.getCircleCenter(position, visual);
-            Object.values(hitbox.circles).forEach(circle => {
-                if (circle) {
-                    circle.style.left = `${center.x}px`;
-                    circle.style.top = `${center.y}px`;
-                }
-            });
+
+            if (this.showCircles) this.drawCircles(hitbox, center);
 
             // Vérifier les collisions avec d'autres entités
-            this.checkEntityCollisions(entity, hitbox, center, property);
+            this.checkEntityCollisions(entity, hitbox, center, property, actors);
         });
     }
 
-    checkEntityCollisions(entity1, hitbox1, center1, property1) {
-        this.entities.forEach(entity2 => {
+    /** Only ever called with tracing on. */
+    drawCircles(hitbox, center) {
+        if (!hitbox.circles.collision) {
+            hitbox.initDebugCircles(this.gameWorld);
+        }
+
+        Object.values(hitbox.circles).forEach(circle => {
+            if (circle) {
+                circle.style.left = `${center.x}px`;
+                circle.style.top = `${center.y}px`;
+            }
+        });
+    }
+
+    checkEntityCollisions(entity1, hitbox1, center1, property1, actors) {
+        actors.forEach(entity2 => {
             if (entity1 === entity2) return;
 
             const hitbox2 = entity2.getComponent('circle_hitbox');

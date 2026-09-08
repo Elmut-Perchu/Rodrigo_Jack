@@ -46,9 +46,10 @@ export class Movement extends System {
                 velocity.vy *= 0.95;
             }
 
-            // Mettre à jour la position visuelle
-            visual.div.style.left = `${position.x}px`;
-            visual.div.style.top = `${position.y}px`;
+            // La position visuelle n'est pas écrite ici. Render s'en charge
+            // plus loin dans la même frame, et le div est désormais déplacé
+            // par un transform (voir visual_component.js) - écrire left/top
+            // par-dessus décalerait le sprite de sa propre position.
 
             // NOTE: input.update() is now called by InputSystem BEFORE velocity calculation
             // This was moved to ensure input.vector is updated before we read it

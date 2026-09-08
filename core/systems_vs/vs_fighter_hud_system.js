@@ -95,8 +95,14 @@ export class VSFighterHud extends System {
         }
         mark.root.style.display = 'block';
 
-        mark.root.style.left = `${position.x}px`;
-        mark.root.style.top = `${position.y}px`;
+        // Transform plutôt que left/top: cette marque suit un combattant à
+        // chaque frame, et left/top renverrait le navigateur dans le layout
+        // à chaque pas (voir visual_component.js).
+        const at = `translate(${position.x}px, ${position.y}px)`;
+        if (mark.placedAt !== at) {
+            mark.placedAt = at;
+            mark.root.style.transform = at;
+        }
 
         this.paintQuiver(entity, mark);
         this.paintSight(entity, mark);
@@ -193,6 +199,11 @@ export class VSFighterHud extends System {
         style.textContent = `
         .fighter-marks {
             position: absolute;
+            /* Ancrée à l'origine: la position est portée par le transform
+               écrit dans paintMark, comme pour les sprites. Sans ces deux
+               lignes l'élément retomberait sur sa position statique. */
+            left: 0;
+            top: 0;
             width: ${FRAME}px;
             height: ${FRAME}px;
             pointer-events: none;

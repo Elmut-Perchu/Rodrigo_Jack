@@ -1,33 +1,32 @@
 import { System } from './system.js';
 
+/**
+ * Puts entities on the page and keeps them where they belong.
+ *
+ * Two things were costing real frame time here and neither was doing any work:
+ *
+ *   The position was read back out of the DOM every frame - parseInt over
+ *   div.style.left and .top, for every entity - purely to decide whether it
+ *   had changed. On a map with three hundred entities that is thirty-five
+ *   thousand string parses a second to answer a question the system already
+ *   knew the answer to. Visual.place() remembers what it drew instead, and
+ *   moves the div with a transform rather than left/top, which keeps the
+ *   browser out of layout entirely (see visual_component.js).
+ *
+ *   A diagnostic pass left over from the VS synchronisation work - marked
+ *   "SET TO FALSE after audit" and never set to false - counted entities every
+ *   300 frames and printed a report to the console every five seconds, in
+ *   every session, for everyone.
+ *
+ */
 export class Render extends System {
     constructor(container) {
         super();
         this.container = container;
         this.gameWorld = this.container.querySelector('.game-world');
-
-        // DIAGNOSTIC MODE: Track conflicts with NetworkSyncSystem
-        this.diagnosticMode = true; // SET TO FALSE after audit
-        this.updateStats = {
-            totalUpdates: 0,
-            remotePlayerUpdates: 0,
-            lastLogTime: 0
-        };
-        this.logCounter = 0;
     }
 
     update() {
-        // DEBUG: Count network players in entities
-        if (!this._debugCount) this._debugCount = 0;
-        this._debugCount++;
-        if (this._debugCount % 300 === 0) {
-            let networkPlayerCount = 0;
-            this.entities.forEach(e => {
-                if (e.getComponent('networkPlayer')) networkPlayerCount++;
-            });
-            console.log(`[RenderSystem] entities: ${this.entities.size}, networkPlayers: ${networkPlayerCount}`);
-        }
-
         this.entities.forEach((entity) => {
             const visual = entity.getComponent('visual');
             const position = entity.getComponent('position');
@@ -39,76 +38,26 @@ export class Render extends System {
 
             // If already in DOM, update position if needed
             if (visual.div.parentElement) {
-                // Only update if position changed (optimization)
-                const currentLeft = parseInt(visual.div.style.left) || 0;
-                const currentTop = parseInt(visual.div.style.top) || 0;
-
-                // CRITICAL FIX: Always update remote players (interpolation creates micro-movements)
-                // parseInt() rounds values, so 1200.6 === 1200, causing skipped updates
-                const needsUpdate = (networkPlayer && !networkPlayer.isLocal)
-                    ? true  // Remote: always update every frame
-                    : (currentLeft !== Math.round(position.x) || currentTop !== Math.round(position.y));
-
-                if (needsUpdate) {
-                    visual.div.style.left = `${position.x}px`;
-                    visual.div.style.top = `${position.y}px`;
-                    this.updateStats.totalUpdates++;
-
-                    // DIAGNOSTIC: Track remote player updates
-                    if (networkPlayer && !networkPlayer.isLocal) {
-                        this.updateStats.remotePlayerUpdates++;
-                        this.logCounter++;
-
-                        // Log every 60 updates (~1 second at 60fps)
-                        if (this.diagnosticMode && this.logCounter % 60 === 0) {
-                            const deltaX = currentLeft - position.x;
-                            const deltaY = currentTop - position.y;
-                            console.log(`
-║ 🎨 [RENDER CONFLICT?] RenderSystem also updated visual.div!
-║ Player: ${networkPlayer.playerName}
-║ Changed: (${currentLeft},${currentTop}) → (${position.x.toFixed(1)},${position.y.toFixed(1)})
-║ Delta: (${deltaX.toFixed(1)}, ${deltaY.toFixed(1)})
-║ ⚠️  If NetworkSyncSystem also logs, this is a RACE CONDITION!`);
-                        }
-                    }
-                }
-
-                // Log stats every 5 seconds
-                const now = performance.now();
-                if (this.diagnosticMode && (now - this.updateStats.lastLogTime) > 5000) {
-                    console.log(`
-📊 [RENDER STATS] 5-second summary:
-   - Total visual updates: ${this.updateStats.totalUpdates}
-   - Remote player updates: ${this.updateStats.remotePlayerUpdates}
-   - Update rate: ${(this.updateStats.totalUpdates / 5).toFixed(1)} Hz`);
-
-                    this.updateStats.totalUpdates = 0;
-                    this.updateStats.remotePlayerUpdates = 0;
-                    this.updateStats.lastLogTime = now;
-                }
-
+                visual.place(position.x, position.y);
                 return;
             }
 
             // Skip if already in DOM via UUID check
             if (document.querySelector(`[uuid="${entity.uuid}"]`)) return;
 
-            // Debug: Log initial rendering for network players
-            if (networkPlayer) {
-                const playerType = networkPlayer.isLocal ? 'Local' : 'Remote';
-                console.log(`[RenderSystem] ${playerType} player "${networkPlayer.playerName}" initial render at (${position.x}, ${position.y})`);
-            }
-
             // Create and style the entity's div
             visual.div.setAttribute('uuid', entity.uuid);
             visual.div.style.position = 'absolute';
-            visual.div.style.left = `${position.x}px`;
-            visual.div.style.top = `${position.y}px`;
+            // Pinned at the origin: everything after this is a transform, so
+            // layout never has to think about this element again.
+            visual.div.style.left = '0';
+            visual.div.style.top = '0';
             visual.div.style.width = `${visual.width}px`;
             visual.div.style.height = `${visual.height}px`;
+            visual.place(position.x, position.y);
             if (visual.bgColor) visual.div.style.backgroundColor = visual.bgColor;
 
-            // hitbox
+            // hitbox - only present when tracing is on (see CircleHitbox)
             if (hitbox && hitbox.circles && hitbox.circles.collision) {
                 hitbox.circles.collision.setAttribute('uuid', entity.uuid);
                 this.gameWorld.appendChild(hitbox.circles.collision)

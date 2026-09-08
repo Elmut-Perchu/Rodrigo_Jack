@@ -28,15 +28,17 @@ export class VSRender extends System {
                 this.initialized.add(entity.uuid);
             }
 
-            // Update visual position
-            visual.div.style.left = `${position.x}px`;
-            visual.div.style.top = `${position.y}px`;
-
             // Tiles carry their sprite in a 'tile' component. Adventure mode
             // paints them through TileSystem, which is not part of the VS
             // pipeline, so without this the arena was 118 transparent divs on
             // a black page. The tileset image loads asynchronously, hence the
             // retry until the component reports it is ready.
+            //
+            // Tested before the position is written, not after: the arena's
+            // scenery is placed once by initializeEntity and never moves, so
+            // re-writing left and top on ninety of them every frame was two
+            // hundred layout invalidations a frame to keep a wall exactly
+            // where it already was.
             const tile = entity.getComponent('tile');
             if (tile) {
                 if (!this.paintedTiles.has(entity.uuid)) {
@@ -45,6 +47,11 @@ export class VSRender extends System {
                 }
                 return; // Tiles are static: no animation work to do
             }
+
+            // Moved with a transform, and only when it actually moved (see
+            // Visual.place): left/top would put the browser back into layout
+            // on every frame in which any fighter took a step.
+            visual.place(position.x, position.y);
 
             const animation = entity.getComponent('animation');
             if (!animation) return;
@@ -200,6 +207,8 @@ export class VSRender extends System {
      */
     updateArrow(arrow, animation, visual) {
         animation.isFlipped = false;
+        // Read back by updateSprite -> syncTransform, which composes it with
+        // the position and the flip into the single transform property.
         visual.rotation = Math.atan2(arrow.direction.y || 0, arrow.direction.x);
 
         if (!animation.initialized) {
@@ -247,8 +256,10 @@ export class VSRender extends System {
         div.style.position = 'absolute';
         div.style.width = `${visual.width}px`;
         div.style.height = `${visual.height}px`;
-        div.style.left = `${position.x}px`;
-        div.style.top = `${position.y}px`;
+        // Pinned at the origin; the transform carries the position.
+        div.style.left = '0';
+        div.style.top = '0';
+        visual.place(position.x, position.y);
 
         // Check if this is a player (has networkPlayer or animation)
         const networkPlayer = entity.getComponent('networkPlayer');
