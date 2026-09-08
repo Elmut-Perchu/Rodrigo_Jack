@@ -1356,8 +1356,12 @@ export class GameVSSimple {
             const name = (np && np.playerName) || 'Player';
             const team = this.teams.get(id);
 
-            const wins = (playerWins && playerWins[id] !== undefined)
-                ? playerWins[id]
+            // All or nothing: once the referee has stated the score directly,
+            // the team route is never consulted again, not even for a fighter
+            // missing from its answer. Mixing the two would put the very bug
+            // this replaced back on one row of the table.
+            const wins = playerWins
+                ? (playerWins[id] || 0)
                 : (this.roundWins[team] || 0);
 
             const won = winnerIds

@@ -7,21 +7,32 @@ export class Interpolation extends Component {
         super();
         this.buffer = []; // State buffer for interpolation
 
-        // How far behind the newest state the fighter is drawn.
-        //
-        // This is the whole budget for the network being uneven. States leave
-        // the server every 50ms but do not arrive every 50ms, and any gap
-        // longer than this budget leaves nothing left to interpolate towards:
-        // the fighter freezes on the newest sample until the next one lands
-        // and then catches up in one step. At 100ms a single late packet did
-        // it, which on a free-tier server across an ocean is most of them.
-        // 150ms buys two.
-        this.bufferDelay = 150;
+        // How far behind the newest state the fighter is drawn - the budget
+        // for the network being uneven. States leave the server every 50ms
+        // but do not arrive every 50ms.
+        this.bufferDelay = 120;
 
-        // Deep enough that the sample being interpolated FROM is never the
-        // one pushed out of the far end: 24 states is 1.2s of history against
-        // a 150ms delay.
-        this.maxBufferSize = 24;
+        // A second of history. The playout clock below never samples the far
+        // end of it unless the stream has stalled for that whole second.
+        this.maxBufferSize = 20;
+
+        // The playout clock: which instant of the buffered history is on
+        // screen right now.
+        //
+        // Reading the buffer against wall-clock time directly is what caused
+        // fighters to hop between two places. Wall time does not care whether
+        // the states needed to answer it have arrived, so the answer kept
+        // falling out of different branches - interpolated properly on one
+        // frame, snapped onto the newest state on the next when nothing had
+        // come in, snapped back on the one after. Each of those snaps is a
+        // fighter jumping the distance they cover in the delay, and back.
+        //
+        // A clock of its own cannot do that. It advances with real time and
+        // closes any gap by running slightly fast or slightly slow, so the
+        // worst a bad connection can produce is a fighter who pauses and then
+        // carries on - never one who is somewhere else and back.
+        this.renderTime = 0;
+        this.lastSampledAt = 0;
 
         // Where to draw a fighter with nothing in the buffer yet - straight
         // after a respawn, say. Without it an empty buffer means "no answer",
@@ -76,58 +87,76 @@ export class Interpolation extends Component {
     reset(x, y) {
         this.buffer.length = 0;
         this.held = { x, y };
+        // The clock belongs to the history it was reading. Kept across a
+        // respawn it would carry the old timeline into the new one.
+        this.renderTime = 0;
+        this.lastSampledAt = 0;
     }
 
     getInterpolatedPosition() {
         if (this.buffer.length === 0) {
             return this.held ? { x: this.held.x, y: this.held.y } : null;
         }
-        if (this.buffer.length === 1) {
-            return {
-                x: this.buffer[0].x,
-                y: this.buffer[0].y
-            };
+
+        const newest = this.buffer[this.buffer.length - 1];
+        const oldest = this.buffer[0];
+        const now = Date.now();
+
+        if (!this.renderTime) {
+            this.renderTime = newest.timestamp - this.bufferDelay;
+            this.lastSampledAt = now;
         }
 
-        // Target time is now minus delay
-        const targetTime = Date.now() - this.bufferDelay;
+        // Capped, so a tab that was in the background does not come back and
+        // run the clock through the whole history in a single frame.
+        const elapsed = Math.max(0, Math.min(now - this.lastSampledAt, 250));
+        this.lastSampledAt = now;
 
-        // Find two states to interpolate between
-        let before = null;
+        // Where the clock ought to be, and the only way it is allowed to get
+        // there: at most 15% off real time, which closes a tenth of a second
+        // of lateness over about two thirds of a second. Moving it outright
+        // would move the fighter outright, which is the fault this exists to
+        // prevent.
+        const drift = (newest.timestamp - this.bufferDelay) - this.renderTime;
+        const rate = 1 + Math.max(-0.15, Math.min(0.15, drift / 600));
+        this.renderTime += elapsed * rate;
+
+        // Two things a slew cannot rescue. Past the newest state means
+        // nothing has arrived for a while: hold there, because a fighter who
+        // pauses is honest and one who is guessed forward has to be corrected
+        // later. Off the back of the buffer means the stream stalled for
+        // longer than the history is deep, and there is nothing left to be
+        // smooth about.
+        if (this.renderTime > newest.timestamp) this.renderTime = newest.timestamp;
+        if (this.renderTime < oldest.timestamp) this.renderTime = oldest.timestamp;
+
+        return this.sampleAt(this.renderTime);
+    }
+
+    /** The fighter's place at one instant of the buffered history. */
+    sampleAt(time) {
+        let before = this.buffer[0];
         let after = null;
 
-        for (let i = 0; i < this.buffer.length; i++) {
-            if (this.buffer[i].timestamp <= targetTime) {
+        for (let i = 1; i < this.buffer.length; i++) {
+            if (this.buffer[i].timestamp <= time) {
                 before = this.buffer[i];
-            } else {
-                after = this.buffer[i];
-                break;
+                continue;
             }
+            after = this.buffer[i];
+            break;
         }
 
-        // No future state, use latest
-        if (!after) {
-            const latest = this.buffer[this.buffer.length - 1];
-            return { x: latest.x, y: latest.y };
-        }
+        if (!after) return { x: before.x, y: before.y };
 
-        // No past state, use earliest
-        if (!before) {
-            return { x: after.x, y: after.y };
-        }
-
-        // Interpolate between before and after
         const duration = after.timestamp - before.timestamp;
-        if (duration <= 0) {
-            return { x: after.x, y: after.y };
-        }
+        if (duration <= 0) return { x: after.x, y: after.y };
 
-        const alpha = (targetTime - before.timestamp) / duration;
-        const clampedAlpha = Math.max(0, Math.min(1, alpha));
+        const alpha = Math.max(0, Math.min(1, (time - before.timestamp) / duration));
 
         return {
-            x: this.blend(before.x, after.x, clampedAlpha, this.wrapWidth),
-            y: this.blend(before.y, after.y, clampedAlpha, this.wrapHeight)
+            x: this.blend(before.x, after.x, alpha, this.wrapWidth),
+            y: this.blend(before.y, after.y, alpha, this.wrapHeight)
         };
     }
 

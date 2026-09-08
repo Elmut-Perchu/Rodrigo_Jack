@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -100,10 +102,40 @@ func main() {
 }
 
 // Health check endpoint
+// buildRevision is the commit this binary was built from.
+//
+// Go stamps it into the binary automatically when building inside a git
+// checkout, which is what the host does, so nothing has to be passed in.
+// Twice now a fix has looked like it did not work when what had actually
+// happened was that the running binary predated it; a plain "OK" cannot tell
+// those two apart, and this can.
+func buildRevision() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			if len(setting.Value) > 12 {
+				return setting.Value[:12]
+			}
+			return setting.Value
+		}
+	}
+	return "unknown"
+}
+
+var startedAt = time.Now()
+
 func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-	log.Println("[Health] Health check requested")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "OK",
+		"revision":   buildRevision(),
+		"startedAt":  startedAt.UTC().Format(time.RFC3339),
+		"uptimeSecs": int(time.Since(startedAt).Seconds()),
+	})
 }
 
 // WebSocket connection handler
