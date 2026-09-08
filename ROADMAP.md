@@ -469,6 +469,10 @@
       `core/vs_pause_menu.js`
 - [x] Pseudo retenu d'un écran à l'autre et d'une visite à l'autre — voir
       `core/vs_prefs.js`
+- [x] Quatre arènes supplémentaires, générées et vérifiées — voir
+      `tools/generate_arenas.py` et `constants/vs_arenas.js`
+- [x] Tuiles choisies selon le voisinage au lieu d'une seule répétée — voir
+      `constants/vs_tileset.js`
 - [ ] Add VS-specific sounds (battle music, announcer)
 - [ ] Create victory/defeat screens
 - [ ] Add match statistics (kills, deaths, time)

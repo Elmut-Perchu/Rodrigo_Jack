@@ -374,7 +374,7 @@
                     <span id="icon-adventure">⏳</span> Disabling adventure features...
                 </div>
                 <div id="step-map" style="margin-bottom: 10px;">
-                    <span id="icon-map">⏳</span> Loading VS battle map...
+                    <span id="icon-map">⏳</span> <span id="map-name">Loading VS battle map...</span>
                 </div>
                 <div id="step-server" style="margin-bottom: 10px;">
                     <span id="icon-server">⏳</span> Connecting to server...
@@ -437,6 +437,7 @@
         import { GameVSSimple } from '../game_vs_simple.js';
         import { VSPauseMenu } from '../core/vs_pause_menu.js';
         import { getPlayerName } from '../core/vs_prefs.js';
+        import { pickArena, ARENAS } from '../constants/vs_arenas.js';
 
         // Parse URL parameters. The lobby only forwards ?room=CODE, so the
         // nickname is recovered from the storage the lobby wrote it to.
@@ -453,8 +454,20 @@
             || sessionStorage.getItem('vsBotLevel')
             || 'soldier';
 
+        // Which battlefield. ?map= forces one; otherwise a room draws its
+        // arena from its own code - so everyone in it agrees without the
+        // server having to say anything - and a bot match draws at random.
+        const arena = pickArena(urlParams.get('map'), isBotMatch ? null : roomCode);
+        const arenaName = (ARENAS.find(a => a.id === arena) || {}).name || arena;
+
         console.log('[VS Game] Starting battle arena (Simple Mode)...');
         console.log(isBotMatch ? `[VS Game] Opponent: computer (${botLevel})` : `[VS Game] Room: ${roomCode}`);
+        console.log(`[VS Game] Arena: ${arenaName} (${arena})`);
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const label = document.getElementById('map-name');
+            if (label) label.textContent = `Arena: ${arenaName}`;
+        });
 
         // Initialize VS game
         let gameInstance = null;
@@ -478,7 +491,7 @@
                 window.game = gameInstance;
 
                 // Initialize
-                await gameInstance.init();
+                await gameInstance.init({ arena });
 
                 if (isBotMatch) {
                     gameInstance.startBotMatch({ levelId: botLevel, playerName });

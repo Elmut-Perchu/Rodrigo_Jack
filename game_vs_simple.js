@@ -2,6 +2,8 @@
 import { createLocalPlayer, createRemotePlayer } from './create/remote_player_create.js';
 import { createTile } from './create/tile_create.js';
 import { TILE_CONSTANTS } from './constants/tile_constants.js';
+import { pickTile } from './constants/vs_tileset.js';
+import { isArena, DEFAULT_ARENA } from './constants/vs_arenas.js';
 
 // Import VS-specific systems
 import { VSInput } from './core/systems_vs/vs_input_system.js';
@@ -78,7 +80,14 @@ export class GameVSSimple {
         console.log('🎮 [GameVSSimple] Created');
     }
 
-    async init() {
+    /**
+     * @param {object} options  { arena } - which battlefield to load. Left
+     *                          out, the default one is used; see
+     *                          constants/vs_arenas.js for how the caller
+     *                          decides, which matters online because every
+     *                          client has to pick the same one.
+     */
+    async init(options = {}) {
         console.log('🎮 [GameVSSimple] Initializing...');
 
         // Add systems in strict order
@@ -106,7 +115,10 @@ export class GameVSSimple {
         console.log('🎮 [GameVSSimple] Systems added:', this.systems.length);
 
         // Load the VS map
-        await this.loadMap('pvp_arena_compact');
+        this.arenaId = options.arena && isArena(options.arena)
+            ? options.arena
+            : DEFAULT_ARENA;
+        await this.loadMap(this.arenaId);
 
         // Start game loop
         requestAnimationFrame(this.loop.bind(this));
@@ -168,6 +180,13 @@ export class GameVSSimple {
     createTilesFromData(tilesData) {
         let tileCount = 0;
 
+        // Reading the grid rather than the entities being built: the tile a
+        // cell needs depends on its neighbours, which do not exist yet.
+        const solidAt = (x, y) => {
+            const row = tilesData[y];
+            return !!row && row[x] === '1';
+        };
+
         // tilesData is an array of strings like "111111111111111111111111"
         tilesData.forEach((row, y) => {
             for (let x = 0; x < row.length; x++) {
@@ -175,8 +194,14 @@ export class GameVSSimple {
 
                 // '1' means solid tile, '0' means empty
                 if (char === '1') {
-                    // createTile expects (gridX, gridY, tilesetX, tilesetY, properties)
-                    const tileEntity = createTile(x, y, 0, 0, { solid: true });
+                    // Which piece of the sheet to draw is decided by what
+                    // this cell is joined to, so a ledge gets capped ends and
+                    // a wall reads as a column (see constants/vs_tileset.js).
+                    const [tileCol, tileRow] = pickTile(
+                        solidAt(x - 1, y), solidAt(x + 1, y),
+                        solidAt(x, y - 1), solidAt(x, y + 1)
+                    );
+                    const tileEntity = createTile(x, y, tileCol, tileRow, { solid: true });
                     this.addEntity(tileEntity);
                     tileCount++;
                 }

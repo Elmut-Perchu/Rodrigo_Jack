@@ -5,7 +5,9 @@
     "tileSize": 64,
     "mapType": "pvp_arena",
     "maxPlayers": 4,
-    "matchDuration": 180
+    "matchDuration": 180,
+    "displayName": "Steps",
+    "description": "A staircase from each corner to the top. Every climb is a short one, so fights move constantly rather than camping."
   },
   "background": {
     "path": "background/back-map1.webp"
@@ -45,60 +47,36 @@
   ],
   "powerups": [
     {
-      "x": 12,
-      "y": 7,
+      "x": 11,
+      "y": 4,
       "type": "health",
       "respawnTime": 10000
     },
     {
-      "x": 12,
-      "y": 3,
+      "x": 1,
+      "y": 9,
       "type": "speed_boost",
       "respawnTime": 15000
     },
     {
-      "x": 12,
-      "y": 10,
+      "x": 22,
+      "y": 9,
       "type": "damage_up",
       "respawnTime": 15000
-    },
-    {
-      "x": 5,
-      "y": 7,
-      "type": "health",
-      "respawnTime": 12000
-    },
-    {
-      "x": 18,
-      "y": 7,
-      "type": "health",
-      "respawnTime": 12000
-    },
-    {
-      "x": 8,
-      "y": 4,
-      "type": "speed_boost",
-      "respawnTime": 18000
-    },
-    {
-      "x": 15,
-      "y": 4,
-      "type": "damage_up",
-      "respawnTime": 18000
     }
   ],
   "tiles": [
     "111100111111111111001111",
     "100000000000000000000001",
     "100000000000000000000001",
-    "100111100000000000111001",
+    "101110000000000000011101",
     "100000000000000000000001",
-    "111000001111111110000111",
-    "000000001000000010000000",
-    "000000001000000010000000",
-    "111000001111111110000111",
+    "100000000011110000000001",
+    "000000000000000000000000",
+    "000000000000000000000000",
+    "100000111100001111000001",
     "100000000000000000000001",
-    "100111100000000000111001",
+    "111110000000000000011111",
     "000000000000000000000000",
     "000000000000000000000000",
     "111100111111111111001111"
