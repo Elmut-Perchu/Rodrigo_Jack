@@ -88,8 +88,13 @@ export class GameVSSimple {
         // speed; loop() scales every system's deltaTime by this.
         this.timeScale = 1.0;
         this._slowMoTimer = null;
-        this._roundBannerTimer = null;
         this._roundBannerKeyHandler = null;
+        // Has this client asked for the next round yet, and how many of the
+        // others have? The score screen waits for every player, so it has to
+        // know both to say anything useful.
+        this.roundReadySent = false;
+        this._roundReadyCount = 0;
+        this._roundReadyTotal = 0;
         this._countdownHideTimer = null;
         this._freezeReleaseTimer = null;
 
@@ -463,6 +468,9 @@ export class GameVSSimple {
             case 'round_end':
                 this.handleRoundEnd(data);
                 break;
+            case 'round_ready_state':
+                this.handleRoundReadyState(data);
+                break;
             case 'match_end':
                 this.handleMatchEnd(data);
                 break;
@@ -780,6 +788,17 @@ export class GameVSSimple {
             if (health && playerData.health !== undefined && health.currentHealth !== playerData.health) {
                 health.currentHealth = playerData.health;
                 hudDirty = true;
+            }
+
+            // Their spirit gauge. Repainted only when it moved by a whole
+            // percent, which is all the HUD can show anyway - at 20Hz for the
+            // length of a match, the rest would be DOM writes nobody sees.
+            if (playerData.spirit !== undefined) {
+                const previous = entity._spirit || 0;
+                entity._spirit = playerData.spirit;
+                if (Math.round(previous * 100) !== Math.round(playerData.spirit * 100)) {
+                    hudDirty = true;
+                }
             }
         });
 
@@ -1111,6 +1130,13 @@ export class GameVSSimple {
 
         // The banner waits for the beat to finish: raised immediately it takes
         // the eye off the very moment the slow-motion exists to show.
+        // The score screen now waits to be dismissed rather than timing out,
+        // so the survivor would otherwise spend it running around an arena
+        // that stopped being broadcast the moment the round ended. Held for
+        // longer than any countdown, because there is no telling how long the
+        // players will take; the next countdown re-arms its own short hold.
+        this.freezeFighters(true, 10 * 60 * 1000);
+
         const title = data.reason === 'draw' ? 'Round Draw - replaying...' : `${data.winnerName} wins the round!`;
         this.triggerVictorySlowMo(0.4, 1400, () => this.showRoundBanner(title, data.winnerTeam));
     }
@@ -1138,8 +1164,16 @@ export class GameVSSimple {
         console.log('🏁 [GameVSSimple] Match over:', data);
     }
 
-    /** Transient, non-blocking round-result banner - the match keeps going. */
-    showRoundBanner(title, winnerTeam, durationMs = 3500) {
+    /**
+     * The round result, and the gate to the next round.
+     *
+     * It does not time out. A round that restarted on a clock took the score
+     * away while it was still being read, and dropped you back into the arena
+     * looking at the wrong thing - so the next round now starts when the
+     * players ask for it (server/room.go beginRoundIntermission), and this
+     * banner is where they ask.
+     */
+    showRoundBanner(title, winnerTeam) {
         const banner = document.getElementById('round-banner');
         const titleEl = document.getElementById('round-banner-title');
         if (!banner || !titleEl) return;
@@ -1148,30 +1182,99 @@ export class GameVSSimple {
         this.renderScoreboard('round-scoreboard', winnerTeam);
         banner.classList.add('visible');
 
-        // Any key dismisses it early; otherwise it hides itself once the
-        // server's own pause between rounds (RoundIntermissionDelay) ends.
-        // This is purely a client-side dismissal - the round restart itself
-        // runs on the server's own timer regardless.
+        this.roundReadySent = false;
+        this.paintRoundHint();
+
+        const button = document.getElementById('round-banner-continue');
+        if (button) {
+            button.disabled = false;
+            button.onclick = () => this.askNextRound();
+        }
+
         if (this._roundBannerKeyHandler) {
             window.removeEventListener('keydown', this._roundBannerKeyHandler);
         }
-        clearTimeout(this._roundBannerTimer);
 
         // Movement keys auto-repeat, so a key held at the moment of the kill
-        // would dismiss the banner before it had been drawn once.
+        // would answer for the player before the banner had been drawn once.
         const acceptFrom = performance.now() + 400;
 
-        const dismiss = (event) => {
-            if (event && performance.now() < acceptFrom) return;
-            banner.classList.remove('visible');
-            window.removeEventListener('keydown', dismiss);
-            this._roundBannerKeyHandler = null;
-            clearTimeout(this._roundBannerTimer);
+        const onKey = (event) => {
+            if (performance.now() < acceptFrom) return;
+            // Escape belongs to the pause menu even here.
+            if (event.key === 'Escape') return;
+            this.askNextRound();
         };
 
-        this._roundBannerKeyHandler = dismiss;
-        window.addEventListener('keydown', dismiss);
-        this._roundBannerTimer = setTimeout(dismiss, durationMs);
+        this._roundBannerKeyHandler = onKey;
+        window.addEventListener('keydown', onKey);
+    }
+
+    /** Tells the server this client has finished with the round score. */
+    askNextRound() {
+        if (this.roundReadySent) return;
+        this.roundReadySent = true;
+
+        const button = document.getElementById('round-banner-continue');
+        if (button) button.disabled = true;
+
+        if (this._roundBannerKeyHandler) {
+            window.removeEventListener('keydown', this._roundBannerKeyHandler);
+            this._roundBannerKeyHandler = null;
+        }
+
+        this.paintRoundHint();
+        this.send('round_ready', {});
+    }
+
+    /**
+     * How many players are still reading. Sent by the server every time one
+     * of them answers, so nobody is left wondering whether the match is stuck
+     * or simply waiting for someone slower.
+     *
+     * Recorded even when the banner is not up yet: this arrives the moment the
+     * round ends, while the slow-motion beat is still playing.
+     */
+    handleRoundReadyState(data) {
+        this._roundReadyCount = data.ready || 0;
+        this._roundReadyTotal = data.total || 0;
+
+        const banner = document.getElementById('round-banner');
+        if (banner && banner.classList.contains('visible')) this.paintRoundHint();
+    }
+
+    /** The line under the button, in whichever of its four states applies. */
+    paintRoundHint() {
+        const ready = this._roundReadyCount || 0;
+        const total = this._roundReadyTotal || 0;
+        // Alone against the computer there is nobody to be counted against,
+        // and a tally of one would only state the obvious.
+        const others = total > 1;
+
+        if (this.roundReadySent) {
+            this.setRoundHint(others ? `Waiting for the other players... (${ready}/${total})` : 'Ready!', true);
+        } else {
+            this.setRoundHint(others ? `Press any key to continue (${ready}/${total} ready)` : 'Press any key to continue', false);
+        }
+    }
+
+    setRoundHint(text, waiting) {
+        const hint = document.getElementById('round-banner-hint');
+        if (!hint) return;
+        hint.textContent = text;
+        hint.classList.toggle('waiting', !!waiting);
+    }
+
+    hideRoundBanner() {
+        const banner = document.getElementById('round-banner');
+        if (banner) banner.classList.remove('visible');
+
+        if (this._roundBannerKeyHandler) {
+            window.removeEventListener('keydown', this._roundBannerKeyHandler);
+            this._roundBannerKeyHandler = null;
+        }
+        const button = document.getElementById('round-banner-continue');
+        if (button) button.onclick = null;
     }
 
     /**
@@ -1223,6 +1326,10 @@ export class GameVSSimple {
 
     /** Big "3, 2, 1, GO!" beat before a round starts - the very first one included. */
     handleCountdown(data) {
+        // The next round is starting, so the score screen has done its job -
+        // including for anyone whose answer arrived last.
+        this.hideRoundBanner();
+
         // A countdown nobody has to wait for is only a decoration: until this,
         // fighters were free to run, jump and shoot all through "3, 2, 1",
         // so a round was already half-played by the time it started and no
@@ -1251,7 +1358,7 @@ export class GameVSSimple {
      * everyone is standing still on solid ground by "GO!" rather than still
      * falling through the first tick of the round.
      */
-    freezeFighters(frozen) {
+    freezeFighters(frozen, holdMs = 1500) {
         this.fighterEntities().forEach((entity) => {
             const network = entity.getComponent('networkPlayer');
             if (!network || !network.simulated) return;
@@ -1279,7 +1386,7 @@ export class GameVSSimple {
         // whose last message never arrives must not leave the arena frozen.
         clearTimeout(this._freezeReleaseTimer);
         if (frozen) {
-            this._freezeReleaseTimer = setTimeout(() => this.freezeFighters(false), 1500);
+            this._freezeReleaseTimer = setTimeout(() => this.freezeFighters(false), holdMs);
         }
     }
 
@@ -1338,36 +1445,48 @@ export class GameVSSimple {
     // === HUD ===
 
     /**
-     * Builds one card per player. vs_game.html ships the styles but leaves
-     * #player-hud empty with a "will be dynamically generated" comment - this
-     * is what generates them.
+     * One line per fighter: colour, hearts, spirit gauge - two down the left
+     * edge of the arena and two down the right.
+     *
+     * Boxed cards said the same thing in a sixth of the screen each, and four
+     * of them walled in the battlefield they were meant to be read against.
+     * The line is identified by the fighter's palette rather than by their
+     * nickname, because the nickname is already floating over their head in
+     * the arena (see NicknameRenderSystem) while the colour is what actually
+     * distinguishes four palette swaps of one sprite mid-brawl.
      */
     buildHud() {
-        const host = document.getElementById('player-hud');
-        if (!host) return;
+        const columns = [
+            document.getElementById('hud-left'),
+            document.getElementById('hud-right')
+        ];
+        if (!columns[0] || !columns[1]) return;
 
         const ids = this.orderedPlayerIds();
-        host.innerHTML = '';
+        columns.forEach(column => { column.innerHTML = ''; });
         this.hudCards = new Map();
+
+        // Split down the middle of the same stable order the spawns and the
+        // palettes use, so a two-player match is one line facing another.
+        const perColumn = Math.max(1, Math.ceil(ids.length / 2));
 
         ids.forEach((id, index) => {
             const entity = this.entityForPlayer(id);
             if (!entity) return;
 
-            const np = entity.getComponent('networkPlayer');
             const isLocal = id === this.localPlayerId;
+            const palette = entity.getComponent('palette');
 
-            const card = document.createElement('div');
-            card.className = `player-card player-${index + 1}`;
+            const row = document.createElement('div');
+            row.className = 'hud-row';
 
-            const name = document.createElement('div');
-            name.className = 'player-name';
-            name.textContent = (np && np.playerName) || 'Player';
-            if (isLocal) name.textContent += ' (You)';
-            card.appendChild(name);
-
-            const stats = document.createElement('div');
-            stats.className = 'player-stats';
+            const colour = document.createElement('span');
+            colour.className = 'hud-colour';
+            // A single mark for your own line: at 10px there is no room for
+            // "(You)" beside a colour name and a gauge.
+            colour.textContent = (isLocal ? '▸ ' : '') + ((palette && palette.name) || `P${index + 1}`);
+            if (palette) colour.style.color = palette.primary;
+            row.appendChild(colour);
 
             // Four hearts, each of which can be half spent. A row of hearts
             // is read at a glance from across the screen; a number is not,
@@ -1388,46 +1507,23 @@ export class GameVSSimple {
                 heartRow.appendChild(heart);
                 hearts.push(heartFill);
             }
-            stats.appendChild(heartRow);
+            row.appendChild(heartRow);
 
-            let spirit = null;
-            if (isLocal) {
-                // The quiver is shown above the fighter's own head instead of
-                // here (see VSFighterHud): it is something you check while
-                // aiming, and looking away to a corner of the screen to count
-                // your arrows is exactly the wrong moment to look away.
+            // The quiver is not here: it is drawn above the fighter's own head
+            // (see VSFighterHud), because counting your arrows is something you
+            // do while aiming, and that is the worst possible moment to look
+            // away at a corner of the screen.
+            const spiritBar = document.createElement('div');
+            spiritBar.className = 'spirit-bar';
+            const spirit = document.createElement('div');
+            spirit.className = 'spirit-fill';
+            spirit.style.width = '0%';
+            spiritBar.appendChild(spirit);
+            row.appendChild(spiritBar);
 
-                // The spirit gauge. Only yours is shown: knowing how close an
-                // opponent is to a spectre would give away the one thing that
-                // makes channelling a gamble.
-                const spiritRow = document.createElement('div');
-                spiritRow.className = 'stat-row';
-                spiritRow.innerHTML = '<span class="stat-label">Spirit</span><span class="spirit-value">0%</span>';
-                stats.appendChild(spiritRow);
+            columns[index < perColumn ? 0 : 1].appendChild(row);
 
-                const spiritBar = document.createElement('div');
-                spiritBar.className = 'spirit-bar';
-                spirit = document.createElement('div');
-                spirit.className = 'spirit-fill';
-                spirit.style.width = '0%';
-                spiritBar.appendChild(spirit);
-                stats.appendChild(spiritBar);
-
-                spirit._label = spiritRow.querySelector('.spirit-value');
-            }
-
-            // The fighter's own colours, so the card and the sprite in the
-            // arena are recognisably the same person.
-            const paletteComponent = entity.getComponent('palette');
-            if (paletteComponent) {
-                card.style.borderColor = paletteComponent.primary;
-                name.style.color = paletteComponent.primary;
-            }
-
-            card.appendChild(stats);
-            host.appendChild(card);
-
-            this.hudCards.set(id, { card, hearts, spirit });
+            this.hudCards.set(id, { card: row, hearts, spirit });
         });
 
         this.refreshHud();
@@ -1467,22 +1563,26 @@ export class GameVSSimple {
      * worth spending.
      */
     refreshSpectreHud() {
-        if (!this.hudCards || !this.localPlayer) return;
+        if (!this.hudCards) return;
 
-        const ui = this.hudCards.get(this.localPlayerId);
-        if (!ui || !ui.spirit) return;
+        this.hudCards.forEach((ui, id) => {
+            if (!ui.spirit) return;
 
-        const state = this.localPlayer.getComponent('spectre_state');
-        if (!state) return;
+            const entity = this.entityForPlayer(id);
+            if (!entity) return;
 
-        const pct = Math.round(Math.max(0, Math.min(1, state.charge)) * 100);
-        ui.spirit.style.width = `${pct}%`;
-        ui.spirit.classList.toggle('ready', state.ready);
+            // A fighter simulated here - you, or a bot - carries the real
+            // gauge. A networked opponent's arrives on the wire instead (see
+            // sendPlayerState), because a gauge that always read zero would be
+            // worse than no gauge at all.
+            const state = entity.getComponent('spectre_state');
+            const charge = state ? state.charge : (entity._spirit || 0);
+            const ready = state ? state.ready : charge >= 1;
 
-        if (ui.spirit._label) {
-            ui.spirit._label.textContent = state.ready ? 'READY' : `${pct}%`;
-            ui.spirit._label.style.color = state.ready ? '#9b59b6' : '#ecf0f1';
-        }
+            const pct = Math.round(Math.max(0, Math.min(1, charge)) * 100);
+            ui.spirit.style.width = `${pct}%`;
+            ui.spirit.classList.toggle('ready', !!ready);
+        });
     }
 
     /** Stable ordering shared with spawn/colour assignment. */
@@ -1801,6 +1901,12 @@ export class GameVSSimple {
         if (!pos || !vel) return;
 
         const animation = this.localPlayer.getComponent('animation');
+        // The spirit gauge travels with the position so the HUD can show a
+        // real figure on every line rather than a permanent zero for anyone
+        // this machine does not simulate. It does mean an opponent can watch
+        // yours fill, which is a deliberate trade: a gauge you cannot trust is
+        // worth less than the bluff it used to protect.
+        const spectre = this.localPlayer.getComponent('spectre_state');
 
         this.send('player_state', {
             x: pos.x,
@@ -1808,7 +1914,8 @@ export class GameVSSimple {
             vx: vel.vx,
             vy: vel.vy,
             animation: animation ? (animation.currentState || 'idle') : 'idle',
-            facingRight: animation ? !animation.isFlipped : true
+            facingRight: animation ? !animation.isFlipped : true,
+            spirit: spectre ? Math.max(0, Math.min(1, spectre.charge)) : 0
         });
     }
 
@@ -1843,7 +1950,6 @@ export class GameVSSimple {
             window.removeEventListener('keydown', this._roundBannerKeyHandler);
             this._roundBannerKeyHandler = null;
         }
-        clearTimeout(this._roundBannerTimer);
         clearTimeout(this._countdownHideTimer);
         clearTimeout(this._freezeReleaseTimer);
     }

@@ -8,6 +8,11 @@ const BASE_PATH = (typeof window !== 'undefined' && window.location.pathname.inc
     ? '../'
     : './';
 
+// The looping background track. Registered on the local channel only - the
+// remote one exists to make other fighters quieter, which is meaningless for
+// something that belongs to the room rather than to anyone in it.
+const MUSIC_ID = 'arena_music';
+
 /*
  * How loud the arena is overall lives in core/vs_prefs.js, because the player
  * sets it from the pause menu and it has to outlast the match they set it in.
@@ -50,6 +55,8 @@ export class VSAudio extends System {
 
         this.clash = new MetallicClash();
 
+        this.startMusic();
+
         // Followed live rather than read once: the slider in the pause menu is
         // something you listen to while you drag it, not something you set and
         // then go back into the match to test.
@@ -63,9 +70,35 @@ export class VSAudio extends System {
         this.clash.volume = level;
     }
 
+    /**
+     * The arena's own loop, under everything else.
+     *
+     * ambient_4 rather than either of its neighbours purely on weight: the two
+     * .wav tracks are 12 and 14MB, which is a long silent wait on the first
+     * load of a page served from a free tier, and this one says the same thing
+     * in 1.4MB.
+     *
+     * Low, and on the music category, so the pause menu's slider moves it with
+     * everything else and a fight never has to be won over the soundtrack.
+     *
+     * Autoplay is not assumed: a page reached by a link has had no gesture on
+     * it yet and the browser will refuse. Audio.playSound already watches for
+     * that on the music category and starts the track on the first interaction
+     * instead, which is the keypress that begins the match anyway.
+     */
+    startMusic() {
+        this.audio.addSound(MUSIC_ID, `${BASE_PATH}assets/sounds/music/ambient_4.mp3`,
+            // Sits high on its own scale because the music category is already
+            // damped to 0.4 and the master defaults to 0.45 - the three
+            // multiply, and anything lower here was inaudible.
+            { volume: 0.9, loop: true, category: 'music' });
+        this.audio.playSound(MUSIC_ID, { fadeIn: 1200 });
+    }
+
     /** Called when the arena is torn down, so a finished match stops listening. */
     dispose() {
         if (this.stopFollowingVolume) this.stopFollowingVolume();
+        this.audio.stopSound(MUSIC_ID, { fadeOut: 600 });
     }
 
     registerSounds(audio) {

@@ -51,14 +51,25 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background-color: rgba(0, 0, 0, 0.55);
             z-index: 2500;
+
+            /* Announces the start without taking the room over. Drawn as a
+               full-screen veil it swallowed every click underneath it, so the
+               last seconds before a match - exactly when there is something to
+               say - were the seconds nobody could type in the chat. */
+            pointer-events: none;
+            background-color: transparent;
         }
 
         .lobby-countdown-number {
             font-size: 64px;
             color: #f39c12;
-            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            /* No veil behind it any more, so the digit carries its own
+               legibility over whatever it happens to sit on. */
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.95),
+                         3px 3px 0 rgba(0, 0, 0, 0.9),
+                         -3px -3px 0 rgba(0, 0, 0, 0.9);
+            opacity: 0.92;
         }
 
         .lobby-container {

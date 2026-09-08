@@ -69,7 +69,18 @@ const (
 	RoundsToWinMatch = 6
 )
 
-// How long the room pauses after a round before respawning everyone for the
-// next one. Gives every client time to play its slow-motion victory beat and
-// show the round score before the next round's countdown starts.
+// The shortest the score screen ever stays up, whatever anyone presses.
+//
+// The slow-motion victory beat is 1.4s of it, and a round score read before
+// the blow that decided it has finished playing is a round score nobody has
+// looked at. Past this the wait belongs to the players (see
+// Room.beginRoundIntermission).
 const RoundIntermissionDelay = 4 * time.Second
+
+// How long the room waits for the players to ask for the next round before
+// starting it regardless.
+//
+// Purely a backstop against an empty chair: long enough that nobody who is
+// actually there ever meets it, short enough that a match does not sit dead
+// on screen for the others.
+const RoundReadyTimeout = 90 * time.Second

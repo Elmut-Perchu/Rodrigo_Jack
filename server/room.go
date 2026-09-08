@@ -22,6 +22,12 @@ type Room struct {
 	RoundWins          map[int]int              `json:"roundWins"`    // team number -> rounds won this match
 	MatchStarted       bool                     `json:"matchStarted"` // True from the first round until someone takes the match
 	countdownCancel    chan struct{}            // Channel to cancel countdown goroutine
+	// Between two rounds the match waits for the players rather than for a
+	// clock: the score screen stays up until everyone has asked for the next
+	// round (see beginRoundIntermission).
+	AwaitingRound   bool            `json:"-"`
+	RoundReady      map[string]bool `json:"-"` // player id -> asked for the next round
+	roundReadyTimer *time.Timer     // Backstop, so one player walking away cannot end the match
 	Arrows             map[string]*ArenaArrow   `json:"-"` // Arrows lying in the arena (see combat_vs.go)
 	Spectres           map[string]string        `json:"-"` // Spirit id -> caster id (see spectre.go)
 	pendingSwings      map[string]*PendingSwing // Sword blows inside their parry window (see parry.go)
@@ -210,6 +216,10 @@ func (r *Room) RemovePlayer(player *Player) {
 		"timestamp":  time.Now().UnixMilli(),
 		"isSystem":   true,
 	}, nil)
+
+	// Deferred onto its own goroutine because this function holds the write
+	// lock all the way out and settleRoundIntermission takes it for reading.
+	go r.settleRoundIntermission()
 }
 
 /*
@@ -614,6 +624,14 @@ func (r *Room) cleanup() {
 
 	r.CountdownActive = false
 	r.CountdownRemaining = 0
+	// No round score screen survives the room being torn down.
+	r.AwaitingRound = false
+	r.RoundReady = nil
+	if r.roundReadyTimer != nil {
+		r.roundReadyTimer.Stop()
+		r.roundReadyTimer = nil
+	}
+
 	r.IsGameActive = false
 	r.MatchStarted = false
 	log.Printf("🧹 [cleanup] Set IsGameActive = FALSE (THIS STOPS handlePlayerState from working!)")
@@ -862,6 +880,129 @@ func (r *Room) startMatchCountdown() {
 	log.Printf("[COUNTDOWN] GO!")
 
 	log.Printf("[COUNTDOWN] ========== END ==========")
+}
+
+// beginRoundIntermission holds the match on the score screen until every
+// connected player has asked for the next round.
+//
+// A timer used to do this instead, which meant the round you had just won was
+// gone before you had finished reading who had won it - and worse, the next
+// one started while you were still looking at the score rather than at the
+// arena. The clock survives only as a backstop against someone walking away
+// from their keyboard mid-match.
+func (r *Room) beginRoundIntermission() {
+	r.mu.Lock()
+	r.AwaitingRound = true
+	r.RoundReady = make(map[string]bool)
+	if r.roundReadyTimer != nil {
+		r.roundReadyTimer.Stop()
+	}
+	r.roundReadyTimer = time.AfterFunc(RoundReadyTimeout, func() {
+		log.Printf("[Round] Nobody answered in room %s, starting the next round anyway", r.Code)
+		r.finishRoundIntermission()
+	})
+	r.mu.Unlock()
+
+	r.broadcastRoundReadyState()
+}
+
+// markRoundReady records that a player has asked for the next round, and
+// starts it once they all have.
+func (r *Room) markRoundReady(playerID string) {
+	r.mu.Lock()
+	if !r.AwaitingRound {
+		r.mu.Unlock()
+		return
+	}
+	if r.RoundReady == nil {
+		r.RoundReady = make(map[string]bool)
+	}
+	if r.RoundReady[playerID] {
+		r.mu.Unlock()
+		return
+	}
+	r.RoundReady[playerID] = true
+	ready, total := r.roundReadyCountLocked()
+	r.mu.Unlock()
+
+	log.Printf("[Round] %s ready for the next round in room %s (%d/%d)", playerID, r.Code, ready, total)
+
+	r.broadcastRoundReadyState()
+	if total > 0 && ready >= total {
+		r.finishRoundIntermission()
+	}
+}
+
+// roundReadyCountLocked counts answers against the humans who are actually
+// here. A player who disconnects during the intermission stops being waited
+// on rather than stalling the match for everyone else, and a bot is never
+// waited on at all: it has no screen to read the round score on, so counting
+// one would hang every round until the backstop fired. Caller holds r.mu.
+func (r *Room) roundReadyCountLocked() (int, int) {
+	ready, total := 0, 0
+	for id, player := range r.Players {
+		if !player.Connected || player.IsBot {
+			continue
+		}
+		total++
+		if r.RoundReady[id] {
+			ready++
+		}
+	}
+	return ready, total
+}
+
+// settleRoundIntermission re-tests the wait after the roster changed, so a
+// player who leaves stops being waited on. Safe to call at any time: it does
+// nothing unless a round score screen is actually up.
+func (r *Room) settleRoundIntermission() {
+	r.mu.RLock()
+	awaiting := r.AwaitingRound
+	ready, total := r.roundReadyCountLocked()
+	r.mu.RUnlock()
+
+	if !awaiting {
+		return
+	}
+
+	r.broadcastRoundReadyState()
+	if total > 0 && ready >= total {
+		r.finishRoundIntermission()
+	}
+}
+
+func (r *Room) broadcastRoundReadyState() {
+	r.mu.RLock()
+	ready, total := r.roundReadyCountLocked()
+	awaiting := r.AwaitingRound
+	r.mu.RUnlock()
+
+	if !awaiting {
+		return
+	}
+
+	r.Broadcast("round_ready_state", map[string]interface{}{
+		"ready": ready,
+		"total": total,
+	}, nil)
+}
+
+// finishRoundIntermission ends the wait exactly once, whichever of the two
+// ways it was reached - everyone answered, or the backstop fired.
+func (r *Room) finishRoundIntermission() {
+	r.mu.Lock()
+	if !r.AwaitingRound {
+		r.mu.Unlock()
+		return
+	}
+	r.AwaitingRound = false
+	if r.roundReadyTimer != nil {
+		r.roundReadyTimer.Stop()
+		r.roundReadyTimer = nil
+	}
+	r.mu.Unlock()
+
+	r.resetForNextRound()
 }
 
 // resetForNextRound respawns everyone and starts the next round's countdown.

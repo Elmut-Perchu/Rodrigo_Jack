@@ -4,7 +4,6 @@ import (
 	"log"
 	"math"
 	"sort"
-	"time"
 )
 
 // AttackType represents different attack types
@@ -333,10 +332,7 @@ func handleRoundEnd(room *Room, winner *Player) {
 		// Simultaneous deaths: nobody scores, just play the round again.
 		log.Printf("[Round] Round ended in a draw for room %s", room.Code)
 		room.Broadcast("round_end", data, nil)
-		go func() {
-			time.Sleep(RoundIntermissionDelay)
-			room.resetForNextRound()
-		}()
+		room.beginRoundIntermission()
 		return
 	}
 
@@ -368,10 +364,9 @@ func handleRoundEnd(room *Room, winner *Player) {
 	room.Broadcast("round_end", data, nil)
 	log.Printf("[Round] Round ended - Winner: %s (%d/%d rounds)", winner.Name, roundsWon, RoundsToWinMatch)
 
-	go func() {
-		time.Sleep(RoundIntermissionDelay)
-		room.resetForNextRound()
-	}()
+	// The next round starts when the players ask for it, not when a timer
+	// says so.
+	room.beginRoundIntermission()
 }
 
 // calculateDistance calculates Euclidean distance between two points

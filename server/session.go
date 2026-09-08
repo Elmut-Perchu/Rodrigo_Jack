@@ -135,6 +135,11 @@ func (r *Room) HandleDisconnect(player *Player) {
 	r.Broadcast("player_disconnected", map[string]interface{}{
 		"playerId": player.ID,
 	}, player)
+
+	// A round score screen waits on the connected players. Someone dropping
+	// out of it may have been the last one it was waiting for, and everyone
+	// else should not have to sit through the backstop timer to find out.
+	r.settleRoundIntermission()
 }
 
 // evictIfStillGone removes a player for good once the grace period expired

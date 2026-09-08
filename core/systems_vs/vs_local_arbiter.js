@@ -56,10 +56,9 @@ const SYNC_HZ = 20;
 // A match is a race to this many round wins (server/constants.go RoundsToWinMatch).
 const ROUNDS_TO_WIN_MATCH = 6;
 
-// Pause between a round ending and the next one's respawn, giving the
-// client's slow-motion victory beat and round banner room to play out
-// (mirrors server/constants.go RoundIntermissionDelay).
-const ROUND_INTERMISSION_MS = 4000;
+// A round ends on the score screen and stays there: the next one starts when
+// the player asks for it, not on a clock (see beginRoundIntermission, and
+// server/room.go for the same rule online).
 
 export class VSLocalArbiter {
     constructor(game) {
@@ -72,6 +71,9 @@ export class VSLocalArbiter {
         this.active = false;
         this.matchOver = false;
         this.syncTimer = null;
+        // Sitting on the round score screen, waiting to be asked for the next
+        // round (see beginRoundIntermission).
+        this.awaitingRound = false;
         // Keyed by team number (this.game.teams), not player id - matching
         // the server's shape (Room.RoundWins keyed by team) so the client's
         // renderScoreboard() works identically online and offline.
@@ -136,6 +138,7 @@ export class VSLocalArbiter {
 
     stop() {
         this.active = false;
+        this.awaitingRound = false;
         if (this.syncTimer) clearInterval(this.syncTimer);
         this.syncTimer = null;
         this.pendingSwings.forEach(s => clearTimeout(s.timer));
@@ -145,6 +148,14 @@ export class VSLocalArbiter {
     // === Inbound: what a client would put on the wire ===
 
     fromClient(playerId, type, data = {}) {
+        // The only thing said between two rounds, and the round is by
+        // definition not running when it is said (server/player.go
+        // handleRoundReady, which is likewise outside the IsGameActive gate).
+        if (type === 'round_ready') {
+            this.markRoundReady();
+            return;
+        }
+
         if (!this.active) return;
         const fighter = this.fighters.get(playerId);
         if (!fighter) return;
@@ -412,7 +423,7 @@ export class VSLocalArbiter {
         if (!winner) {
             // Simultaneous deaths: nobody scores, just play the round again.
             this.emit('round_end', { reason: 'draw' });
-            setTimeout(() => this.resetForNextRound(), ROUND_INTERMISSION_MS);
+            this.beginRoundIntermission();
             return;
         }
 
@@ -441,7 +452,30 @@ export class VSLocalArbiter {
         }
 
         this.emit('round_end', payload);
-        setTimeout(() => this.resetForNextRound(), ROUND_INTERMISSION_MS);
+        this.beginRoundIntermission();
+    }
+
+    /**
+     * Holds the next round until the player asks for it, exactly as the room
+     * does online (server/room.go beginRoundIntermission).
+     *
+     * No backstop timer here, unlike the server: online one is needed because
+     * an empty chair would keep everybody else waiting, and offline the only
+     * person the match is waiting for is the one looking at the screen.
+     */
+    beginRoundIntermission() {
+        this.awaitingRound = true;
+        this.emit('round_ready_state', { ready: 0, total: 1 });
+    }
+
+    markRoundReady() {
+        if (!this.awaitingRound) return;
+        this.awaitingRound = false;
+        this.emit('round_ready_state', { ready: 1, total: 1 });
+
+        // Off the caller's stack: this arrives from inside the client's own
+        // send(), and resetForNextRound emits straight back into it.
+        setTimeout(() => this.resetForNextRound(), 0);
     }
 
     /** Respawns every fighter and starts the next round (server/room.go resetForNextRound). */

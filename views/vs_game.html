@@ -64,56 +64,58 @@
             font-family: 'Press Start 2P', sans-serif;
         }
 
-        /* Player HUD */
+        /* Player HUD.
+           Two fighters down the left edge, two down the right, one line each -
+           colour, hearts, spirit gauge - so the corners of the arena stay
+           clear. Boxed cards used to eat a sixth of the screen between them
+           for information that reads perfectly well as a single line. */
         .player-hud {
             display: flex;
             justify-content: space-between;
-            padding: 20px;
+            align-items: flex-start;
+            padding: 14px 18px;
             gap: 20px;
         }
 
-        .player-card {
-            background-color: rgba(0, 0, 0, 0.7);
-            border: 2px solid #3498db;
-            border-radius: 8px;
-            padding: 15px;
-            min-width: 170px;
-            pointer-events: auto;
-        }
-
-        .player-card.player-1 { border-color: #e74c3c; }
-        .player-card.player-2 { border-color: #3498db; }
-        .player-card.player-3 { border-color: #2ecc71; }
-        .player-card.player-4 { border-color: #f39c12; }
-
-        .player-card.dead {
-            opacity: 0.5;
-            border-color: #7f8c8d;
-        }
-
-        .player-name {
-            font-size: 12px;
-            color: white;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-
-        .player-stats {
+        .hud-column {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
 
-        .stat-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 10px;
-            color: #ecf0f1;
+        /* The right-hand pair reads from the edge inwards, so both columns
+           hang off their own side of the screen rather than both leaning
+           left. */
+        #hud-right .hud-row {
+            flex-direction: row-reverse;
         }
 
-        .stat-label {
-            color: #95a5a6;
+        .hud-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            /* No panel, just a shadow deep enough to hold white pixels over
+               pale stone. */
+            text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.9);
+            filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.75));
+        }
+
+        .hud-row.dead {
+            opacity: 0.42;
+            filter: grayscale(1);
+        }
+
+        /* Which fighter this line belongs to, in that fighter's own colour -
+           the arena has four palette swaps of one sprite, and the colour is
+           what tells them apart at a glance. */
+        .hud-colour {
+            font-size: 10px;
+            font-weight: bold;
+            min-width: 74px;
+        }
+
+        #hud-right .hud-colour {
+            text-align: right;
         }
 
         /* Four hearts, each able to be half spent. The fill is a second copy
@@ -123,7 +125,6 @@
         .heart-row {
             display: flex;
             gap: 4px;
-            margin: 7px 0 4px;
         }
 
         .heart {
@@ -146,14 +147,16 @@
         }
 
         /* Spirit gauge. Slimmer than a heart so the two are never misread at
-           a glance in the middle of a fight. */
+           a glance in the middle of a fight, and now sitting on the same line
+           as them rather than under. */
         .spirit-bar {
-            width: 100%;
+            width: 64px;
             height: 6px;
-            background-color: #34495e;
+            flex-shrink: 0;
+            background-color: rgba(52, 73, 94, 0.85);
+            border: 1px solid rgba(0, 0, 0, 0.6);
             border-radius: 3px;
             overflow: hidden;
-            margin-top: 3px;
         }
 
         .spirit-fill {
@@ -425,11 +428,43 @@
             min-width: 220px;
         }
 
+        /* The banner is click-through so the arena stays readable behind it;
+           the one thing in it that has to be clickable says so itself. */
+        .round-banner-button {
+            pointer-events: auto;
+            margin-top: 16px;
+            padding: 10px 22px;
+            font-family: inherit;
+            font-size: 10px;
+            color: #1b2631;
+            background-color: #f39c12;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .round-banner-button:hover:not(:disabled) {
+            background-color: #f5b041;
+        }
+
+        .round-banner-button:disabled {
+            background-color: #566573;
+            color: #95a5a6;
+            cursor: default;
+        }
+
         .round-banner-hint {
-            margin-top: 14px;
+            margin-top: 12px;
             font-size: 9px;
             color: #95a5a6;
             animation: blink 1.2s steps(2, jump-none) infinite;
+        }
+
+        /* Once you have answered there is nothing left to press, so the line
+           stops flashing for attention it no longer needs. */
+        .round-banner-hint.waiting {
+            animation: none;
+            color: #7f8c8d;
         }
 
         @keyframes blink {
@@ -547,9 +582,11 @@
                 <div class="players-alive" id="players-alive">Connecting…</div>
             </div>
 
-            <!-- Player HUD -->
+            <!-- Player HUD: two fighters down each side, one line each.
+                 Rows are generated by GameVSSimple.buildHud(). -->
             <div class="player-hud" id="player-hud">
-                <!-- Player cards will be dynamically generated -->
+                <div class="hud-column" id="hud-left"></div>
+                <div class="hud-column" id="hud-right"></div>
             </div>
 
             <!-- Three weapons and an aim: worth stating once on screen -->
@@ -563,11 +600,13 @@
             </div>
         </div>
 
-        <!-- Round Banner (transient - a round win, not the match) -->
+        <!-- Round Banner - a round win, not the match. Stays up until every
+             player has asked for the next round. -->
         <div class="round-banner" id="round-banner">
             <div class="round-banner-title" id="round-banner-title">Round Won!</div>
             <div class="scoreboard" id="round-scoreboard"></div>
-            <div class="round-banner-hint">Press any key to continue</div>
+            <button class="round-banner-button" id="round-banner-continue">Next round</button>
+            <div class="round-banner-hint" id="round-banner-hint">Press any key to continue</div>
         </div>
 
         <!-- Countdown ("3, 2, 1, GO!") - shown before every round, first included -->
@@ -634,9 +673,15 @@
         // match on the same difficulty; online there is nothing this client
         // can restart on its own, so it goes back to the lobby.
         function rematchUrl() {
-            return isBotMatch
-                ? `vs_game.html?mode=bot&level=${encodeURIComponent(botLevel)}`
-                : 'vs_lobby.html';
+            if (isBotMatch) return `vs_game.html?mode=bot&level=${encodeURIComponent(botLevel)}`;
+
+            // The room code has to travel with it. Sent to a bare vs_lobby.html
+            // the page has nothing to rejoin and bounces straight back out with
+            // "No room code provided", which is what the button looked like it
+            // was doing on purpose.
+            return roomCode
+                ? `vs_lobby.html?room=${encodeURIComponent(roomCode)}`
+                : 'vs_room_browser.html';
         }
 
         async function initializeGame() {

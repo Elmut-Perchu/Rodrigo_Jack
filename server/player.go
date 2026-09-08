@@ -43,6 +43,10 @@ type Player struct {
 	FacingRight bool    `json:"facingRight"`
 	Health      int     `json:"health"`
 	IsAlive     bool    `json:"isAlive"`
+	// Spirit gauge, 0..1. Filled entirely on the owner's own machine (see
+	// VSSpectre) and relayed here purely so the other clients can draw it on
+	// their HUD - the server never reads it to decide anything.
+	Spirit float64 `json:"spirit"`
 	// Validation tracking
 	LastStateUpdate time.Time `json:"-"`      // For rate limiting and movement validation
 	Quiver          int       `json:"quiver"` // Arrows carried (see combat_vs.go)
@@ -164,6 +168,8 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handleLobbyReady(msg)
 	case "game_ready":
 		p.handleGameReady(msg)
+	case "round_ready":
+		p.handleRoundReady(msg)
 	case "chat_message":
 		p.handleChatMessage(msg)
 	case "player_state":
@@ -367,6 +373,15 @@ func (p *Player) handleGameReady(msg *Message) {
 	log.Printf("[GAME_READY] ========== END ==========")
 }
 
+// handleRoundReady records that this player has finished reading the round
+// score and wants the next round (see Room.beginRoundIntermission).
+func (p *Player) handleRoundReady(_ *Message) {
+	if p.Room == nil {
+		return
+	}
+	p.Room.markRoundReady(p.ID)
+}
+
 // handleChatMessage handles chat messages
 func (p *Player) handleChatMessage(msg *Message) {
 	if p.Room == nil {
@@ -542,6 +557,9 @@ func (p *Player) handlePlayerState(msg *Message) {
 	}
 	if facingRight, ok := msg.Data["facingRight"].(bool); ok {
 		p.FacingRight = facingRight
+	}
+	if spirit, ok := msg.Data["spirit"].(float64); ok {
+		p.Spirit = math.Max(0, math.Min(1, spirit))
 	}
 
 	log.Printf("📊 [handlePlayerState] Position updated successfully for %s at (%.1f, %.1f)", p.Name, p.X, p.Y)
