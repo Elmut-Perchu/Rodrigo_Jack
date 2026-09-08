@@ -12,9 +12,19 @@ const BODY_Y = 79;
 const SIGHT_RADIUS = 84;
 const SIGHT_SIZE = 18;
 
-const PIP_HEIGHT = 7;
+// Upright arrows, so height is what you notice and width is what you spend.
+// Seven of these plus their gaps come to 61px inside a 110px frame - the row
+// stays narrower than the fighter carrying it.
+const PIP_HEIGHT = 10;
 const PIP_WIDTH = Math.round(PIP_HEIGHT * ARROW_ASPECT);
 const PIP_GAP = 2;
+
+// The sight has to be found instantly in the middle of a brawl, so it is the
+// one thing in the arena wearing a colour the artwork never uses: everything
+// else is stone, leather and the four fighters' own liveries. Red for an empty
+// quiver, because that reads as "no" before it is even identified as a sight.
+const SIGHT_COLOUR = '#ffd21e';
+const SIGHT_EMPTY_COLOUR = '#ff3b30';
 
 /**
  * The two things a bow needs, drawn on the fighter rather than in a corner.
@@ -45,8 +55,8 @@ export class VSFighterHud extends System {
         this.marks = new Map(); // entity uuid -> { root, pips, sight, shown }
 
         this.pipIcon = arrowIcon('#f0d8a8');
-        this.sightIcon = reticleIcon('#f5f0e6');
-        this.sightEmptyIcon = reticleIcon('#c0554e');
+        this.sightIcon = reticleIcon(SIGHT_COLOUR);
+        this.sightEmptyIcon = reticleIcon(SIGHT_EMPTY_COLOUR);
 
         this.injectStyles();
     }
@@ -210,9 +220,15 @@ export class VSFighterHud extends System {
             height: ${SIGHT_SIZE}px;
             background-size: 100% 100%;
             background-repeat: no-repeat;
-            opacity: 0.55;
+            opacity: 0.85;
             transition: opacity 0.12s linear, transform 0.12s ease-out;
-            filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7));
+            /* Outlined on all four sides rather than given a drop shadow: the
+               sight passes over pale stone and dark sky alike, and a shadow
+               underneath only holds it up against one of them. */
+            filter: drop-shadow(1px 0 0 rgba(0, 0, 0, 0.9))
+                    drop-shadow(-1px 0 0 rgba(0, 0, 0, 0.9))
+                    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.9))
+                    drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.9));
         }
         .aim-sight.drawing {
             opacity: 1;

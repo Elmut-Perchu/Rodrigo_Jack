@@ -105,6 +105,80 @@ func (p *Player) handleSpectreEnd(msg *Message) {
 	}, nil)
 }
 
+// handleSpectreCut clears a spirit that a sword or an arrow caught in flight.
+//
+// Ending a spectre otherwise belongs to its caster alone, for the same reason
+// a shooter owns its arrow: one machine has to decide, or the clients
+// disagree about what is still in the air. This is the one message that lets
+// somebody else do it, and it has to be, because the caster is precisely the
+// person who would rather it kept flying.
+//
+// Checked rather than trusted, like every other client claim: the spirit must
+// exist, must not be the cutter's own, and must not belong to a teammate.
+// Where it happened is not checked at all - the clients simulate the flight
+// themselves and no position for it is ever streamed, so the server has
+// nothing to compare a claim against. Getting that wrong costs a wraith that
+// had five seconds to live either way.
+func (p *Player) handleSpectreCut(msg *Message) {
+	actor := p.actor(msg)
+	if actor == nil || p.Room == nil || !p.Room.IsGameActive || !actor.IsAlive {
+		return
+	}
+
+	spectreID, ok := msg.Data["spectreId"].(string)
+	if !ok || spectreID == "" {
+		return
+	}
+
+	p.Room.mu.Lock()
+	ownerID, exists := p.Room.Spectres[spectreID]
+	if !exists || ownerID == actor.ID {
+		p.Room.mu.Unlock()
+		return
+	}
+	if owner, known := p.Room.Players[ownerID]; known && sameTeam(actor, owner) {
+		p.Room.mu.Unlock()
+		return
+	}
+	delete(p.Room.Spectres, spectreID)
+	p.Room.mu.Unlock()
+
+	log.Printf("[Spectres] %s cut down a spirit", actor.Name)
+
+	p.Room.Broadcast("spectre_ended", map[string]interface{}{
+		"spectreId": spectreID,
+		"cut":       true,
+	}, nil)
+
+	// An arrow that did the cutting is not spent by it. It drops where it
+	// struck and stays part of the arena's stock, exactly as one that has
+	// gone into a fighter does - arrows are only ever moved between quivers
+	// and the floor, never destroyed.
+	arrowID, _ := msg.Data["arrowId"].(string)
+	if arrowID == "" {
+		return
+	}
+
+	x, xOk := msg.Data["x"].(float64)
+	y, yOk := msg.Data["y"].(float64)
+	if !xOk || !yOk {
+		return
+	}
+
+	p.Room.mu.Lock()
+	if arrow, arrowExists := p.Room.Arrows[arrowID]; arrowExists {
+		arrow.X, arrow.Y = x, y
+		arrow.Stuck = false // Still falling; its owner reports where it lands
+	}
+	p.Room.mu.Unlock()
+
+	p.Room.Broadcast("arrow_dropped", map[string]interface{}{
+		"arrowId": arrowID,
+		"x":       x,
+		"y":       y,
+	}, nil)
+}
+
 // clearSpectresLocked wipes the registry between matches.
 func (r *Room) clearSpectresLocked() {
 	r.Spectres = make(map[string]string)

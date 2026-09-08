@@ -48,12 +48,25 @@ const HEART = [
     '...#...'
 ];
 
+/**
+ * One arrow, standing up.
+ *
+ * Pointing up rather than along the shot: these sit above the fighter's head
+ * as a tally of what is left in the quiver, and an arrow lying on its side
+ * there read as a direction - as though the row were saying which way the bow
+ * was aimed. Upright, it is plainly a count.
+ *
+ * Narrow on purpose too. A full quiver is seven of them over a 110px frame,
+ * and the wide chevron made that row nearly as broad as the fighter himself.
+ */
 const ARROW = [
-    '....#..',
-    '.....#.',
-    '#######',
-    '.....#.',
-    '....#..'
+    '..#..',
+    '.###.',
+    '#####',
+    '..#..',
+    '..#..',
+    '..#..',
+    '..#..'
 ];
 
 /**

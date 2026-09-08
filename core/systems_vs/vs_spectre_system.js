@@ -31,6 +31,7 @@ export class VSSpectre extends System {
         super(game);
         this.game = game;
         this.triggers = new Map(); // entity uuid -> { magic: bool }
+        this.cutRequested = new Set(); // Spirits already reported as cut down
     }
 
     update(deltaTime) {
@@ -45,11 +46,18 @@ export class VSSpectre extends System {
         });
 
         spectres.forEach(entity => this.advance(entity, deltaTime));
+
+        // After they have moved, so a swing and a shot are judged against
+        // where the spirit actually is this step.
+        if (spectres.length) this.cutSweep(spectres);
     }
 
     removeEntity(entity) {
         super.removeEntity(entity);
         this.triggers.delete(entity.uuid);
+
+        const spectre = entity.getComponent('spectre');
+        if (spectre) this.cutRequested.delete(spectre.spectreId);
     }
 
     triggerFor(entity) {
@@ -310,6 +318,127 @@ export class VSSpectre extends System {
         });
 
         this.finish(spectre, position);
+    }
+
+    // === Cutting one down ===
+
+    /**
+     * Steel and arrows against a spirit.
+     *
+     * Reported, never applied here. Ending a spectre normally belongs to its
+     * caster alone - and the caster is the last person who would end this one
+     * - so the claim goes to the referee, which confirms it and tells
+     * everybody at once. That keeps every client agreeing about what is still
+     * in the air, which is the whole reason spectres are not streamed.
+     *
+     * Only claims for fighters simulated on this machine are sent: online,
+     * the swinger's own client is the one that owns the claim, exactly as it
+     * owns batting an arrow out of the air.
+     */
+    cutSweep(spectres) {
+        this.bladeSweep(spectres);
+        this.arrowSweep(spectres);
+    }
+
+    bladeSweep(spectres) {
+        const now = performance.now();
+
+        this.game.fighterEntities().forEach((fighter, playerId) => {
+            const networkPlayer = fighter.getComponent('networkPlayer');
+            if (!networkPlayer || !networkPlayer.simulated) return;
+
+            if (!fighter._bladeActiveUntil || now > fighter._bladeActiveUntil) return;
+
+            const property = fighter.getComponent('property');
+            if (property && property.isAlive === false) return;
+
+            const position = fighter.getComponent('position');
+            if (!position) return;
+
+            const originX = position.x + BODY_OFFSET_X;
+            const originY = position.y + BODY_OFFSET_Y;
+
+            for (const entity of spectres) {
+                const spectre = entity.getComponent('spectre');
+                if (!this.cuttable(spectre, playerId)) continue;
+
+                const centre = this.centreOf(entity);
+                if (!centre) continue;
+
+                const dx = centre.x - originX;
+                const dy = centre.y - originY;
+
+                // Must be on the side the blade is sweeping
+                if (fighter._bladeFacingRight ? dx < -20 : dx > 20) continue;
+                if (Math.hypot(dx, dy) > VS_SPECTRE.BLADE_CUT_RANGE) continue;
+
+                this.reportCut(playerId, spectre, centre, null);
+            }
+        });
+    }
+
+    arrowSweep(spectres) {
+        this.game.arrows.forEach((entity, arrowId) => {
+            const arrow = entity.getComponent('arrow');
+            if (!arrow || arrow.state !== 'flying') return;
+
+            // The shooter rules on what its own arrow hits, spirits included.
+            if (!this.game.simulatesFighter(arrow.ownerPlayerId)) return;
+
+            const position = entity.getComponent('position');
+            const visual = entity.getComponent('visual');
+            if (!position || !visual) return;
+
+            // The shaft sits in the middle of a much larger sprite.
+            const shaftX = position.x + visual.width / 2;
+            const shaftY = position.y + visual.height / 2;
+
+            for (const target of spectres) {
+                const spectre = target.getComponent('spectre');
+                if (!this.cuttable(spectre, arrow.ownerPlayerId)) continue;
+
+                const centre = this.centreOf(target);
+                if (!centre) continue;
+
+                if (Math.hypot(centre.x - shaftX, centre.y - shaftY) > VS_SPECTRE.ARROW_CUT_RADIUS) {
+                    continue;
+                }
+
+                // The arrow travels with the claim so the referee can drop it
+                // where it struck: it is spent, not destroyed, like every
+                // other arrow that has hit something.
+                this.reportCut(arrow.ownerPlayerId, spectre, { x: position.x, y: position.y }, arrowId);
+                return;
+            }
+        });
+    }
+
+    /** Anyone's spirit but your own side's, and only once. */
+    cuttable(spectre, cutterId) {
+        if (!spectre || spectre.spent) return false;
+        if (this.cutRequested.has(spectre.spectreId)) return false;
+        if (spectre.ownerId === cutterId) return false;
+        return !this.game.areAllies(spectre.ownerId, cutterId);
+    }
+
+    reportCut(cutterId, spectre, at, arrowId) {
+        this.cutRequested.add(spectre.spectreId);
+
+        this.game.sendFrom(cutterId, 'spectre_cut', {
+            spectreId: spectre.spectreId,
+            arrowId: arrowId || undefined,
+            x: at.x,
+            y: at.y
+        });
+    }
+
+    centreOf(entity) {
+        const position = entity.getComponent('position');
+        if (!position) return null;
+        return {
+            x: position.x + VS_SPECTRE.DISPLAY_SIZE / 2,
+            y: position.y + VS_SPECTRE.DISPLAY_SIZE / 2
+        };
     }
 
     expire(spectre, position) {

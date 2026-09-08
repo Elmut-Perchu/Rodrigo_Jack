@@ -5,6 +5,7 @@ import {
     MAGIC_DAMAGE,
     MAX_HEALTH
 } from '../../constants/vs_combat_constants.js';
+import { VS_BOW } from '../../constants/vs_bow_constants.js';
 
 /**
  * Plays the part of the Go server for a match against the computer.
@@ -138,6 +139,12 @@ export class VSLocalArbiter {
                 break;
             case 'spectre_end':
                 this.emit('spectre_ended', { spectreId: data.spectreId });
+                break;
+
+            // Except when someone cuts one down, which is not the caster's
+            // call to make and so cannot come through spectre_end.
+            case 'spectre_cut':
+                this.handleSpectreCut(playerId, data);
                 break;
 
             // Positions are read straight off the entities in a local match,
@@ -305,12 +312,15 @@ export class VSLocalArbiter {
         return victims;
     }
 
-    applyDamage(attackerId, victimId, attackType) {
+    applyDamage(attackerId, victimId, attackType, override) {
         const victim = this.fighters.get(victimId);
         const attacker = this.fighters.get(attackerId);
         if (!victim || !attacker || !victim.isAlive) return;
 
-        const damage = attackType === 'arrow' ? ARROW_DAMAGE
+        // The override is for blows that are not worth a number - a bow put
+        // against someone and loosed. Left undefined, the weapon decides.
+        const damage = override !== undefined ? override
+            : attackType === 'arrow' ? ARROW_DAMAGE
             : attackType === 'magic' ? MAGIC_DAMAGE
             : MELEE_DAMAGE;
 
@@ -500,7 +510,51 @@ export class VSLocalArbiter {
             this.emit('arrow_dropped', { arrowId: data.arrowId, x: data.x, y: data.y });
         }
 
-        this.applyDamage(shooterId, victimId, 'arrow');
+        // Loosed with the bow against them: a killing blow, not a wound.
+        // Measured here from the two poses the referee already holds, so it
+        // is not something the shooter can claim.
+        const shooterPose = this.poseOf(shooterId);
+        const pointBlank = !!shooterPose
+            && Math.hypot(shooterPose.x - pose.x, shooterPose.y - pose.y) <= VS_BOW.POINT_BLANK_RANGE;
+
+        this.applyDamage(shooterId, victimId, 'arrow', pointBlank ? MAX_HEALTH : undefined);
+    }
+
+    /**
+     * A fighter reports cutting a spirit out of the air.
+     *
+     * Ending a spectre is normally its caster's call alone, for the same
+     * reason a shooter owns its arrow: one machine has to decide. A sword or
+     * an arrow through one is the exception, and it has to be, because the
+     * caster is precisely the person who would rather it kept flying.
+     *
+     * Checked rather than trusted, like every other claim: the spirit has to
+     * exist, and it must not be the cutter's own.
+     */
+    handleSpectreCut(cutterId, data) {
+        const fighter = this.fighters.get(cutterId);
+        if (!fighter || !fighter.isAlive) return;
+        if (!data.spectreId) return;
+
+        const entity = this.game.spectres.get(data.spectreId);
+        if (!entity) return;
+
+        const spectre = entity.getComponent('spectre');
+        if (!spectre || spectre.ownerId === cutterId) return;
+
+        this.emit('spectre_ended', { spectreId: data.spectreId, cut: true });
+
+        // An arrow that did the cutting is not spent by it: it drops where it
+        // struck and stays part of the arena's stock, exactly as one that has
+        // gone into a fighter does.
+        if (data.arrowId) {
+            const arrow = this.arrows.get(data.arrowId);
+            if (arrow) {
+                arrow.x = data.x ?? arrow.x;
+                arrow.y = data.y ?? arrow.y;
+            }
+            this.emit('arrow_dropped', { arrowId: data.arrowId, x: data.x, y: data.y });
+        }
     }
 
     /**

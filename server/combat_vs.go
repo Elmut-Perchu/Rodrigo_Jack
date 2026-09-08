@@ -285,6 +285,15 @@ func (p *Player) handleArrowHit(msg *Message) {
 		}, nil)
 	}
 
+	// Loosed with the bow against them: a killing blow, not a wound. Measured
+	// between the two players from the positions the server already holds, so
+	// it is not something a shooter can claim for itself.
+	if calculateDistance(actor.X, actor.Y, victim.X, victim.Y) <= POINT_BLANK_RANGE {
+		log.Printf("[Combat] %s shot %s point blank", actor.Name, victim.Name)
+		applyDamageAmount(p.Room, actor, victim, AttackArrow, MAX_HEALTH)
+		return
+	}
+
 	applyDamage(p.Room, actor, victim, AttackArrow, 1.0)
 }
 

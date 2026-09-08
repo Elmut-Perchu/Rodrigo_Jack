@@ -25,6 +25,7 @@ import { createArrow } from './create/arrow_create.js';
 import { createBot } from './create/bot_create.js';
 import { createSpectre } from './create/spectre_create.js';
 import { differentSwing, HEARTS, HALVES_PER_HEART, MAX_HEALTH } from './constants/vs_combat_constants.js';
+import { VS_SPECTRE } from './constants/vs_spectre_constants.js';
 import { heartIcon } from './core/vs_pixel_icons.js';
 
 // Drawn once and reused by every card: the same two images for all four
@@ -455,7 +456,7 @@ export class GameVSSimple {
                 });
                 break;
             case 'spectre_ended':
-                this.destroySpectre(data.spectreId);
+                this.destroySpectre(data.spectreId, data.cut);
                 break;
 
             case 'arrow_registry':
@@ -1267,6 +1268,17 @@ export class GameVSSimple {
         arrow.arrowId = arrowId;
         arrow.ownerPlayerId = ownerId;
 
+        // Live from the first frame, unlike Adventure's arrows.
+        //
+        // The shared component holds a 100ms grace period so a shot does not
+        // stick to the shooter's own feet. In the arena that grace is worth
+        // 90 to 160px of flight - a tile and a half - during which the arrow
+        // ignored everything: it slid through walls at close quarters, and a
+        // shot pressed against an opponent came out the far side of them
+        // without ever registering. Neither is needed here, because VSArrow
+        // never lets an arrow hit the fighter who loosed it.
+        arrow.collisionDelay = 0;
+
         if (alreadyStuck) {
             arrow.state = 'stuck';
             arrow.isRecoverable = true;
@@ -1443,9 +1455,29 @@ export class GameVSSimple {
         return entity;
     }
 
-    destroySpectre(spectreId) {
+    /**
+     * Clears a spirit away.
+     *
+     * A spectre that simply ran out of time goes quietly. One that was cut
+     * down bursts and rings, because somebody earned that: it is the same
+     * burst and the same steel note as a parried blade, which is exactly what
+     * it is - a blow answered rather than taken.
+     */
+    destroySpectre(spectreId, cut = false) {
         const entity = this.spectres.get(spectreId);
         if (!entity) return;
+
+        if (cut) {
+            const position = entity.getComponent('position');
+            if (position) {
+                spawnSparks(
+                    position.x + VS_SPECTRE.DISPLAY_SIZE / 2,
+                    position.y + VS_SPECTRE.DISPLAY_SIZE / 2,
+                    { count: 16, spread: 90 }
+                );
+            }
+            this.audio?.playClash();
+        }
 
         this.removeEntity(entity);
         this.spectres.delete(spectreId);

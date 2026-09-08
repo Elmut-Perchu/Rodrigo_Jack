@@ -49,11 +49,18 @@ const (
 	ArrowHitTolerance = 160.0
 )
 
-// Damage values
+// Damage values.
+//
+// Aliases for the half-heart figures in constants.go, kept because the combat
+// code below reads better in Go casing. They were literals here once - 15, 20
+// and 25 against a hundred hit points - and survived the move to four hearts
+// as a second, silent set of numbers: every blow in an online match was
+// instantly fatal against a health of 8, while offline matches (which read the
+// JavaScript constants) played correctly. One definition now, in constants.go.
 const (
-	MeleeDamage = 15
-	ArrowDamage = 20
-	MagicDamage = 25
+	MeleeDamage = MELEE_DAMAGE
+	ArrowDamage = ARROW_DAMAGE
+	MagicDamage = MAGIC_DAMAGE
 )
 
 // ProcessAttack handles combat logic with server authority
@@ -208,8 +215,16 @@ func applyDamage(room *Room, attacker *Player, victim *Player, attackType Attack
 	if damageMultiplier <= 0 {
 		damageMultiplier = 1.0
 	}
-	damage := int(float64(baseDamage) * damageMultiplier)
 
+	applyDamageAmount(room, attacker, victim, attackType, int(float64(baseDamage)*damageMultiplier))
+}
+
+// applyDamageAmount lands a blow worth a given number of half-hearts.
+//
+// Split out from applyDamage for the blows whose weight is not the weapon's
+// to decide: a bow put against someone and loosed is a killing blow whatever
+// the arrow is normally worth (see handleArrowHit).
+func applyDamageAmount(room *Room, attacker *Player, victim *Player, attackType AttackType, damage int) {
 	// Apply damage
 	victim.Health -= damage
 	if victim.Health < 0 {

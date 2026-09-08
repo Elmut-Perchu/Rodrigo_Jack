@@ -44,5 +44,20 @@ export const VS_SPECTRE = {
     COOLDOWN: 600,
 
     // Display size of the 32x32 wraith frames.
-    DISPLAY_SIZE: 84
+    DISPLAY_SIZE: 84,
+
+    // What it takes to cut one down.
+    //
+    // A spirit that could only be outrun made the third weapon a thing to
+    // suffer rather than a thing to answer: it never misses by being aimed
+    // badly, so the counter to it cannot be dodging either. A sword swung
+    // through one, or an arrow put into it, dissolves it - which turns the
+    // two seconds the caster spent standing still into a gamble instead of a
+    // guarantee.
+    //
+    // Measured from the spirit's centre: the blade to the fighter's body
+    // centre, roughly its reach; the arrow to its shaft, forgiving enough
+    // that catching a wraith mid-turn is a shot worth attempting.
+    BLADE_CUT_RANGE: 120,
+    ARROW_CUT_RADIUS: 44
 };

@@ -53,4 +53,10 @@ const (
 	MELEE_DAMAGE = 1
 	ARROW_DAMAGE = 2
 	MAGIC_DAMAGE = 2
+
+	// How close the shooter must be for an arrow to be a killing blow rather
+	// than a wound. Two fighters in contact stand about 104px apart, body
+	// centre to body centre, so this is the length of an outstretched arm.
+	// Mirrors POINT_BLANK_RANGE in constants/vs_bow_constants.js.
+	POINT_BLANK_RANGE = 120.0
 )

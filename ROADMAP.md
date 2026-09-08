@@ -473,6 +473,18 @@
       `tools/generate_arenas.py` et `constants/vs_arenas.js`
 - [x] Tuiles choisies selon le voisinage au lieu d'une seule répétée — voir
       `constants/vs_tileset.js`
+- [x] Flèches du carquois dressées et plus étroites, viseur en jaune vif
+      contour noir — voir `core/vs_pixel_icons.js` et
+      `core/systems_vs/vs_fighter_hud_system.js`
+- [x] Les spectres se coupent à l'épée ou à la flèche — voir `spectre_cut`
+      dans `core/systems_vs/vs_spectre_system.js`, `server/spectre.go` et
+      l'arbitre local
+- [x] Flèche à bout portant : coup mortel — voir `POINT_BLANK_RANGE` dans
+      `constants/vs_bow_constants.js`
+- [x] Les flèches ne traversent plus les murs (le sursis de 100 ms valait
+      jusqu'à une tuile et demie de pierre) — voir `spawnArrowEntity`
+- [x] Dégâts serveur alignés sur les quatre cœurs : `game_logic.go` gardait
+      15/20/25 sur une santé de 8, chaque coup était mortel en ligne
 - [ ] Add VS-specific sounds (battle music, announcer)
 - [ ] Create victory/defeat screens
 - [ ] Add match statistics (kills, deaths, time)

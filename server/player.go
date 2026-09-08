@@ -194,6 +194,8 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handleSpectreSpawn(msg)
 	case "spectre_end":
 		p.handleSpectreEnd(msg)
+	case "spectre_cut":
+		p.handleSpectreCut(msg)
 	case "arrow_hit":
 		p.handleArrowHit(msg)
 	case "ping":
