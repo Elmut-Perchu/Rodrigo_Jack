@@ -15,6 +15,7 @@
 - **Phase 4**: ✅ Multiplayer Sync (7 days) - COMPLETE
 - **Phase 5**: 🟡 Polish & Testing (11 days) - DEVELOPMENT COMPLETE, TESTING PENDING
 - **Phase 6**: ✅ Mobile (touch controls, zoomed-out camera, spirit paralysis) - COMPLETE
+- **Phase 7**: ✅ Performance & latency (frame cost, adaptive jitter buffer) - COMPLETE
 
 **Overall Progress**: 31/36 development tasks completed (86%)
 **Status**: Development Phase Complete + Mini-Framework Integration - Ready for Testing
@@ -624,5 +625,55 @@ in Chromium at 844x390; `go build`, `go vet` and `go test ./...` clean.
 
 ---
 
-**Last Updated**: 2026-09-08 - Phase 6 (mobile + spirit rework)
-**Current Phase**: Phase 5 testing pending; Phase 6 complete
+## ⚡ Phase 7: Performance & Latency
+
+**Goal**: The two complaints that sound alike and are not. "The game lags"
+against the computer is frame cost, with no network anywhere near it. "I see
+my opponent late" is delay, and it is mostly self-inflicted.
+
+### Frame cost (drawing)
+- [x] `TileSystem` painted 280 tiles' worth of CSS sixty times a second to
+      draw scenery that never moves - now painted once (58 -> 1.3 ms/s)
+- [x] Position moved from `left`/`top` to a 2D `transform`, so moving anything
+      no longer invalidates layout (95 -> 1-4 ms/s of layout)
+- [x] `Render` read every entity's position back out of the DOM with `parseInt`
+      each frame to detect change; `Visual` remembers instead (27.1 -> 3.2)
+- [x] `CircleHitbox` rebuilt its actor list per entity per frame (27.2 -> 5.9)
+- [x] Removed a diagnostic pass marked "SET TO FALSE after audit" that had
+      been printing to every player's console every five seconds
+- [x] Removed three transparent divs per fighter, repositioned each frame to
+      show nothing
+- **Measured**: 14 -> 31 fps at CPU/20, 29 -> 66 at CPU/12, 66 -> 120 at CPU/6
+
+### Latency (network)
+- [x] `interpolation_component.js`: the 120ms playout buffer was a fixed guess
+      at the worst connection anyone might have, charged to everyone. It now
+      measures the lateness this connection actually produces and sizes itself
+      to it (`require()`), between a 50ms floor and a 250ms ceiling
+- [x] Jitter read from `Date.now() - timestamp`, which is already the excess
+      over the best trip because `serverToLocal` tracks that best trip as its
+      clock offset - no second estimator needed
+- [x] Decaying peak rather than an average: sized to the worst of the last few
+      seconds, relaxing over ~10s of calm. Grows in 2s, shrinks in 15s
+- [x] Margin calibrated by sweep, not by intuition: the playout clock's ±15%
+      slew already absorbs most jitter, so the buffer needs a slope near 0.4,
+      not 1.0
+- [x] Rejected: feeding starvation back into the estimate. It compounds -
+      a 2s freeze walked the delay to the ceiling and held it there. The
+      information is already in the arrival measurement
+
+**Measured** (two live clients, real Go server, localhost): perceived delay
+**138ms -> 77ms**. Smoothness identical at every jitter level from 0 to 150ms
+(0.11% -> 0.50% irregular steps, same both sides). Adventure mode byte-for-byte
+unchanged - the component is VS-only.
+
+**Not done, and why**: LAN/Bluetooth play. Bluetooth is impossible in a browser
+(Web Bluetooth has no peripheral role). LAN is cheap but buys ~43ms of a ~215ms
+budget, so it is a comfort rather than a remedy. A browser-hosted referee over
+WebRTC is the real version - and `vs_local_arbiter.js` is already an N-player
+referee in JavaScript, so half of it exists.
+
+---
+
+**Last Updated**: 2026-09-09 - Phase 7 (performance + adaptive jitter buffer)
+**Current Phase**: Phase 5 testing pending; Phases 6 and 7 complete

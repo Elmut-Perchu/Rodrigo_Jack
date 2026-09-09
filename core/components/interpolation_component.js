@@ -13,6 +13,65 @@ import { wrapValue, shortestDelta } from '../../constants/vs_wrap_constants.js';
  */
 const RESPAWN_GRACE = 250;
 
+/**
+ * The gap the buffer always has to span: the server broadcasts every 50ms
+ * (TICK_INTERVAL, server/game_loop.go), so two states are never closer than
+ * that and a buffer shallower than one of them has nothing to interpolate
+ * between.
+ */
+const PACKET_INTERVAL = 50;
+
+/**
+ * The floor and the ceiling on how far behind an opponent is drawn.
+ *
+ * The floor is exactly one broadcast: the clock always needs a state ahead of
+ * where it is drawing to interpolate toward, and below one broadcast apart
+ * there is no guarantee of one, so the fighter stutters. The sweep below says
+ * 40ms survives a clean link, but that is measuring uniform jitter - real
+ * links arrive in bursts, and the extra 10ms is what covers the difference. The ceiling is where the cure has become the disease - past a
+ * quarter second the delay hurts more than the jitter it is hiding, and a
+ * connection needing more than that is not going to be rescued by waiting.
+ */
+const MIN_DELAY = 50;
+const MAX_DELAY = 250;
+
+/**
+ * How much of the observed lateness has to be held as buffer.
+ *
+ * Not one-for-one, and that is the whole finding. The playout clock below
+ * already absorbs unevenness by running up to 15% fast or slow, so the buffer
+ * is only asked to cover what the slew cannot. Sweeping fixed depths against
+ * known jitter says what is actually needed:
+ *
+ *     gigue    0ms -> 40ms      gigue   80ms ->  60ms
+ *     gigue   30ms -> 50ms      gigue  150ms -> 100ms
+ *
+ * which is a slope near 0.4, not the 1.0 the naive reading of "cover the
+ * jitter" suggests. Half is that slope with room to spare, and it keeps the
+ * worst case at roughly the 120ms this used to charge everyone - so no
+ * connection ends up worse off than before, and good ones end up far better.
+ */
+const JITTER_MARGIN = 0.5;
+
+/**
+ * How much of the recent peak survives each state received - about twenty a
+ * second, so a delay bought by one bad patch is handed back over roughly ten
+ * seconds of calm.
+ */
+const PEAK_DECAY = 0.995;
+
+/**
+ * How fast the delay walks toward what the connection is asking for.
+ *
+ * Deliberately lopsided. Being too shallow costs a visible stutter, and the
+ * moment that is discovered is the moment it is already happening, so growth
+ * is quick. Being too deep costs nothing but latency, which can be given back
+ * at leisure - and giving it back slowly stops the delay oscillating around a
+ * connection that is merely bumpy.
+ */
+const GROW_RATE = 0.25;
+const SHRINK_RATE = 0.02;
+
 export class Interpolation extends Component {
     constructor() {
         super();
@@ -21,7 +80,25 @@ export class Interpolation extends Component {
         // How far behind the newest state the fighter is drawn - the budget
         // for the network being uneven. States leave the server every 50ms
         // but do not arrive every 50ms.
+        //
+        // This used to be a flat 120ms for everyone, which is the wrong shape
+        // of answer: it is a guess at the worst connection anybody might have,
+        // charged to everybody all the time. On a good link it was roughly
+        // twice what was needed, and since it sits in series with the send
+        // interval, the server tick and two network crossings, it was the
+        // single largest term in what a player actually sees.
+        //
+        // It is now measured. See require(): the delay tracks the lateness
+        // this connection is really producing, so a phone on a clean network
+        // settles near the floor and one on a bad one still gets what it
+        // needs.
         this.bufferDelay = 120;
+
+        // What the connection has recently demanded - a peak that decays, so
+        // it is sized to the worst of the last few seconds rather than to the
+        // average (which is always survivable) or to the worst ever (which
+        // would mean one bad moment taxing the rest of the match).
+        this.neededDelay = 120;
 
         // A second of history. The playout clock below never samples the far
         // end of it unless the stream has stalled for that whole second.
@@ -76,6 +153,19 @@ export class Interpolation extends Component {
         // empty at exactly the moment they arrive.
         if (timestamp < this.acceptFrom) return;
 
+        // How late this state is against the best trip this connection has
+        // managed. Nothing here has to establish that best trip: the timestamp
+        // arrives already converted by game_vs_simple.serverToLocal, whose
+        // clock offset is itself the minimum of every trip seen. Subtracting
+        // it therefore yields the excess directly, and a state that took the
+        // fastest route available reads as exactly zero.
+        //
+        // Measured before the ordering check below rather than after, because
+        // a state that turns up out of order is the loudest evidence of an
+        // uneven link there is, and throwing it away would be discarding the
+        // reading along with the state.
+        this.require(PACKET_INTERVAL + Math.max(0, Date.now() - timestamp) * JITTER_MARGIN);
+
         // getInterpolatedPosition scans the buffer expecting it to run in
         // time order. A state stamped no later than the one already at the
         // end would break that scan, and it has nothing new to say anyway.
@@ -94,6 +184,27 @@ export class Interpolation extends Component {
         if (this.buffer.length > this.maxBufferSize) {
             this.buffer.shift();
         }
+    }
+
+    /**
+     * Records a delay this connection has just shown it needs, and walks the
+     * one in use toward it.
+     *
+     * Called by every arriving state, reporting how late that state was. That
+     * one reading is the whole input: it needs nothing on screen to have gone
+     * wrong first, and it costs a subtraction.
+     *
+     * @param delay  the buffer depth that would have covered what just happened
+     */
+    require(delay) {
+        // A peak that decays. An average would be sized to the trips that were
+        // never a problem, and a plain maximum would let one bad second charge
+        // the rest of the match.
+        this.neededDelay = Math.max(delay, this.neededDelay * PEAK_DECAY);
+
+        const target = Math.max(MIN_DELAY, Math.min(MAX_DELAY, this.neededDelay));
+        const rate = target > this.bufferDelay ? GROW_RATE : SHRINK_RATE;
+        this.bufferDelay += (target - this.bufferDelay) * rate;
     }
 
     /**
@@ -168,6 +279,20 @@ export class Interpolation extends Component {
         // later. Off the back of the buffer means the stream stalled for
         // longer than the history is deep, and there is nothing left to be
         // smooth about.
+
+        // Running dry is deliberately NOT reported to require().
+        //
+        // It looks like the ideal signal - the buffer proving in the act that
+        // it was too shallow - and the first version did exactly that. It
+        // compounds: the shortfall is measured against bufferDelay, so every
+        // dry frame asks for a little more than the last one asked for, and a
+        // two-second freeze walked the delay to the ceiling and left it there
+        // for a quarter of a minute.
+        //
+        // It is also redundant. A state that is late says so on arrival, in
+        // addState, with the same number and no feedback path - so the only
+        // thing lost by staying silent here is the case where states stop
+        // altogether, and no buffer of any depth was going to cover that.
         if (this.renderTime > newest.timestamp) this.renderTime = newest.timestamp;
         if (this.renderTime < oldest.timestamp) this.renderTime = oldest.timestamp;
 
