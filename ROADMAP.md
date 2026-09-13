@@ -675,5 +675,23 @@ referee in JavaScript, so half of it exists.
 
 ---
 
+## 📌 Backlog (demande par Jacques, pas encore commence)
+
+### Plein ecran mobile - a revoir
+- [ ] Le geste actuel n'est pas decouvrable: rien a l'ecran ne dit qu'un appui
+      long bascule le plein ecran, donc personne ne le trouve
+- [ ] Chercher les bonnes pratiques (iOS Safari n'a pas l'API Fullscreen sur
+      iPhone - seul `apple-mobile-web-app-capable` en raccourci ecran d'accueil
+      donne un vrai plein ecran; Android l'a)
+
+### Croix directionnelle au lieu des quatre boutons
+- [ ] Remplacer les quatre boutons ronds de gauche par une croix en X,
+      translucide, decoupee en quatre zones cliquables (haut, bas, gauche,
+      droite)
+- [ ] But: elargir la surface touchable - des zones contigues ne laissent pas
+      d'espace mort entre elles, contrairement a quatre pastilles separees
+
+---
+
 **Last Updated**: 2026-09-09 - Phase 7 (performance + adaptive jitter buffer)
 **Current Phase**: Phase 5 testing pending; Phases 6 and 7 complete
