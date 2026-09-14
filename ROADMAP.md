@@ -692,20 +692,22 @@ serveur sur Render, donc les deux ne peuvent pas atterrir ensemble. Le premier
 deploiement a 30Hz a livre un client qui croyait a des diffusions toutes les
 33ms a un serveur qui envoyait encore toutes les 50. Le couplage etait le bug.
 
-### 🚨 Le serveur est en Oregon - action requise cote Jacques
+### Region: reporte (le cout etait surestime)
 - [x] `render.yaml` declare desormais `region: frankfurt` sur les deux services
-- [ ] **Ne suffit pas**: Render ne permet pas de changer la region d'un service
+- [ ] Reporte a la demande de Jacques. **Ne suffit pas**: Render ne permet pas
+      de changer la region d'un service
       existant. Il faut supprimer les deux services et relancer le Blueprint
       (New -> Blueprint -> ce depot). Les noms etant identiques, les URL le
       restent, donc aucun changement cote client
 - [ ] Rien de durable n'est perdu: aucun disque ni base declares, et le service
       de scores garde sa table en memoire - elle est deja videe a chaque veille
 
-**Mesure depuis Marseille**: aller-retour jusqu'a l'origine us-west1 de 263ms en
-moyenne (min 173, max 602), contre 42ms pour joindre l'edge Cloudflare local.
-C'est le terme dominant, devant tout ce que la cadence et le tampon ont pu
-gagner. Retard percu mesure en production, deux clients: **271ms**, dont ~200 de
-pure geographie.
+**Mesure, et sa correction**: les 263ms releves d'abord l'ont ete sur une
+instance froide. A chaud le meme aller-retour mesure **62ms**, et ce n'est pas
+un artefact de cache (`cf-cache-status: DYNAMIC`, `uptimeSecs` progresse bien
+d'un appel a l'autre) - Cloudflare achemine par son propre reseau entre
+Marseille et l'origine. La geographie coute donc ~62ms, pas ~260, et le
+demenagement redevient un gain modere.
 
 **Correction d'une mesure donnee plus tot**: mes "47ms d'aller-retour vers
 Render" etaient faux. Je chronometrais `time_connect`, c'est-a-dire la poignee
@@ -717,17 +719,24 @@ fort qu'annonce. Dans la meme piece, le pair-a-pair n'economise pas 43ms mais
 les ~260ms de traversee transatlantique. A reevaluer une fois Francfort en
 place, qui devrait deja ramener le trajet sous les 40ms.
 
-### 🚨 Deploiement Render casse - action requise cote Jacques
-- [ ] **Les deux secrets du depot ne sont pas configures.** `gh secret list` est
+### Deploiement Render - repare le 14 septembre
+- [x] **Les deux secrets du depot n'etaient pas configures.** `gh secret list` est
       vide, et `deploy-render.yml` sort en succes quand le hook est absent, donc
       le workflow est vert depuis toujours sans rien declencher
-- [ ] Render sert `b246880` (8 septembre). Tout changement serveur depuis cette
-      date n'est jamais parti
-- [ ] A faire: Render -> chaque service -> Settings -> Deploy Hook, copier
-      l'URL, puis GitHub -> Settings -> Secrets -> Actions:
-      `RENDER_VS_SERVER_HOOK` et `RENDER_SCORE_API_HOOK`
-- [ ] Ensuite relancer le workflow a la main (onglet Actions -> Deploy to
-      Render -> Run workflow) et verifier `/health`
+- [x] Render servait `b246880` (8 septembre). Tout changement serveur depuis
+      cette date n'etait jamais parti
+- [x] Secrets poses, puis reposes apres la recreation des services (les URL de
+      hook changent avec le service - l'ancienne renvoyait 404)
+- [x] `ALLOWED_ORIGINS` est en `sync: false`: absent du Blueprint, il doit etre
+      remis a la main sur le service. Sans lui le serveur renvoie 403 a toute
+      connexion venant de Vercel, et le mode VS ne marche pas du tout. Il
+      survit en revanche aux redeploiements suivants
+- [x] Chaine verifiee de bout en bout: push -> workflow -> hooks -> rebuild ->
+      revision en ligne, lue sur `/health`
+
+**Production mesuree apres reparation**: retard percu **87ms** entre deux vrais
+navigateurs, quatre joueurs connectes sans probleme (tampons a 36ms), API de
+scores a 200. Sous la barre des 100ms.
 
 **Correction d'une estimation donnee plus tot**: j'avais annonce que le WiFi
 local ferait passer de 215ms a une trentaine. Faux. Retirer le serveur ne
