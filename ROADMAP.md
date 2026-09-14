@@ -692,6 +692,31 @@ serveur sur Render, donc les deux ne peuvent pas atterrir ensemble. Le premier
 deploiement a 30Hz a livre un client qui croyait a des diffusions toutes les
 33ms a un serveur qui envoyait encore toutes les 50. Le couplage etait le bug.
 
+### 🚨 Le serveur est en Oregon - action requise cote Jacques
+- [x] `render.yaml` declare desormais `region: frankfurt` sur les deux services
+- [ ] **Ne suffit pas**: Render ne permet pas de changer la region d'un service
+      existant. Il faut supprimer les deux services et relancer le Blueprint
+      (New -> Blueprint -> ce depot). Les noms etant identiques, les URL le
+      restent, donc aucun changement cote client
+- [ ] Rien de durable n'est perdu: aucun disque ni base declares, et le service
+      de scores garde sa table en memoire - elle est deja videe a chaque veille
+
+**Mesure depuis Marseille**: aller-retour jusqu'a l'origine us-west1 de 263ms en
+moyenne (min 173, max 602), contre 42ms pour joindre l'edge Cloudflare local.
+C'est le terme dominant, devant tout ce que la cadence et le tampon ont pu
+gagner. Retard percu mesure en production, deux clients: **271ms**, dont ~200 de
+pure geographie.
+
+**Correction d'une mesure donnee plus tot**: mes "47ms d'aller-retour vers
+Render" etaient faux. Je chronometrais `time_connect`, c'est-a-dire la poignee
+de main TCP avec le cache Cloudflare de Marseille, pas avec le serveur. Il faut
+lire `time_starttransfer` moins `time_appconnect`.
+
+**Ce que ca change pour le telephone arbitre**: l'argument devient bien plus
+fort qu'annonce. Dans la meme piece, le pair-a-pair n'economise pas 43ms mais
+les ~260ms de traversee transatlantique. A reevaluer une fois Francfort en
+place, qui devrait deja ramener le trajet sous les 40ms.
+
 ### 🚨 Deploiement Render casse - action requise cote Jacques
 - [ ] **Les deux secrets du depot ne sont pas configures.** `gh secret list` est
       vide, et `deploy-render.yml` sort en succes quand le hook est absent, donc

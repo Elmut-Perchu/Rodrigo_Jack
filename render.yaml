@@ -7,12 +7,26 @@
 #
 # Free plan services spin down after 15 min idle and take up to ~50s to wake
 # on the next request - core/ui/wake_overlay.js covers that in the client.
+#
+# REGION: both services declare frankfurt. Left unset, Render deploys to
+# oregon, and that is what happened here - the services sat in us-west1 while
+# the players are in France. Measured from Marseille, the round trip to the
+# origin was 263ms on average (min 173, max 602), against 42ms to reach
+# Cloudflare's local edge. That single fact was larger than every millisecond
+# won by tuning the tick rate and the playout buffer put together.
+#
+# Render's own docs: "This value cannot be modified after the service is
+# created." So changing these lines is not enough on its own - the services
+# have to be recreated for it to take effect. Nothing durable is lost by that:
+# neither service declares a disk or a database, and the score API keeps its
+# table in memory, so it is already emptied by every spin-down.
 
 services:
   - type: web
     name: rodrigo-jack-score-api
     runtime: go
     plan: free
+    region: frankfurt
     rootDir: .
     autoDeploy: true
     buildCommand: go build -o app .
@@ -23,6 +37,7 @@ services:
     name: rodrigo-jack-vs-server
     runtime: go
     plan: free
+    region: frankfurt
     rootDir: server
     autoDeploy: true
     buildCommand: go build -o app .
