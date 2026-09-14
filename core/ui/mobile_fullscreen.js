@@ -50,6 +50,20 @@ export function enableMobileFullscreen(options = {}) {
     if (installed || !IS_MOBILE) return;
     installed = true;
 
+    const support = fullscreenSupport();
+
+    // Opened from the home screen: the manifest already gave the game the whole
+    // screen in landscape. Nothing to claim, and nothing to explain.
+    if (support === 'installed') return;
+
+    // An iPhone in Safari. There is no fullscreen to request here, so promising
+    // one with a hint about a long press would be a lie the player then spends
+    // a while disproving. Say the true thing instead, once, and stop.
+    if (support === 'homescreen') {
+        showHomescreenCard();
+        return;
+    }
+
     const hint = options.hint === undefined
         ? 'Appui long : plein écran'
         : options.hint;
@@ -106,6 +120,61 @@ export function enableMobileFullscreen(options = {}) {
     });
 }
 
+/**
+ * Whether the game is already running as an installed app.
+ *
+ * `navigator.standalone` is Safari's own flag for a page opened from the home
+ * screen; the media query is the standard equivalent, which Chrome answers.
+ * Either way there are no bars to remove and nothing here has anything to do.
+ */
+export function isStandalone() {
+    if (window.navigator.standalone) return true;
+    return !!(window.matchMedia
+        && window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches);
+}
+
+/**
+ * What this device can actually offer, which is not the same everywhere.
+ *
+ *   'installed'  - already opened from the home screen; nothing to ask for.
+ *   'api'        - Fullscreen API present. Android, desktop, iPad since iOS 12.
+ *   'homescreen' - no API at all. This is the iPhone, where Safari exposes
+ *                  fullscreen for video and for nothing else, and where the
+ *                  only way to lose the bars is to add the game to the home
+ *                  screen - which the manifest then opens in landscape with
+ *                  no browser chrome.
+ *
+ * The distinction is the whole point of this rewrite. The old code returned a
+ * quiet false on an iPhone and told the player nothing, so the long press
+ * appeared broken rather than unavailable - which is exactly what "on ne sait
+ * pas comment faire" was describing.
+ */
+export function fullscreenSupport() {
+    if (isStandalone()) return 'installed';
+    const element = document.documentElement;
+    if (element.requestFullscreen || element.webkitRequestFullscreen) return 'api';
+    return 'homescreen';
+}
+
+/**
+ * Turns the phone sideways and keeps it there, where that is allowed.
+ *
+ * A platformer wants landscape, and a rotation mid-jump is a lost platform.
+ * The lock only works from inside fullscreen, which is why it is called after
+ * entering rather than on its own, and it simply does not exist on iOS. A
+ * refusal is an answer, not a fault: the game plays either way round.
+ */
+function lockLandscape() {
+    const orientation = window.screen && window.screen.orientation;
+    if (!orientation || typeof orientation.lock !== 'function') return;
+    try {
+        const result = orientation.lock('landscape');
+        if (result && result.catch) result.catch(() => {});
+    } catch (error) {
+        /* declined */
+    }
+}
+
 function isControl(target) {
     return !!(target && target.closest
         && target.closest('.tc-root, button, input, select, textarea, a, .round-banner, .game-over-screen'));
@@ -125,7 +194,11 @@ export function requestFullscreen() {
     // useful to do here beyond not throwing.
     if (!request) return Promise.resolve(false);
 
-    return settle(() => request.call(element, { navigationUI: 'hide' }));
+    return settle(() => request.call(element, { navigationUI: 'hide' }))
+        .then(ok => {
+            if (ok) lockLandscape();
+            return ok;
+        });
 }
 
 export function exitFullscreen() {
@@ -153,6 +226,63 @@ function settle(call) {
 
 export function toggleFullscreen() {
     return isFullscreen() ? exitFullscreen() : requestFullscreen();
+}
+
+/**
+ * What to do on an iPhone, said plainly and only once.
+ *
+ * A toast is wrong for this: it is three steps long, it involves leaving the
+ * page, and it disappears before it can be followed. So it is a small panel
+ * that waits to be dismissed, and it remembers having been dismissed - nobody
+ * needs telling twice, and a nag over a game is worse than bars around it.
+ */
+function showHomescreenCard() {
+    const KEY = 'rj_homescreen_hint';
+    try {
+        if (localStorage.getItem(KEY)) return;
+    } catch (error) {
+        /* private browsing: show it, once per session, rather than never */
+    }
+
+    const card = document.createElement('div');
+    card.className = 'rj-homescreen-card';
+    card.innerHTML = `
+        <strong>Plein écran</strong>
+        <p>Safari sur iPhone ne permet pas le plein écran depuis une page.
+        Pour jouer sans les barres :</p>
+        <ol><li>Bouton Partager</li><li>« Sur l'écran d'accueil »</li>
+        <li>Ouvrir le jeu depuis l'icône</li></ol>
+        <button type="button">Compris</button>`;
+
+    const style = document.createElement('style');
+    style.textContent = `
+    .rj-homescreen-card {
+        position: fixed; left: 50%; top: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 6000; max-width: 300px;
+        padding: 16px 18px; border-radius: 10px;
+        background: rgba(10, 12, 18, 0.96);
+        border: 2px solid #3498db; color: #ecf0f1;
+        font-family: 'Press Start 2P', sans-serif; font-size: 8px; line-height: 1.8;
+    }
+    .rj-homescreen-card strong { display: block; margin-bottom: 10px; font-size: 10px; color: #3498db; }
+    .rj-homescreen-card p { margin: 0 0 10px; }
+    .rj-homescreen-card ol { margin: 0 0 14px; padding-left: 16px; }
+    .rj-homescreen-card li { margin-bottom: 5px; }
+    .rj-homescreen-card button {
+        display: block; width: 100%; padding: 9px;
+        background: #3498db; border: none; border-radius: 5px;
+        color: #fff; font-family: inherit; font-size: 8px; cursor: pointer;
+    }`;
+
+    card.querySelector('button').addEventListener('click', () => {
+        card.remove();
+        style.remove();
+        try { localStorage.setItem(KEY, '1'); } catch (error) { /* nothing to do */ }
+    });
+
+    document.head.appendChild(style);
+    document.body.appendChild(card);
 }
 
 /**

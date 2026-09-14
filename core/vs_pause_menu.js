@@ -1,5 +1,6 @@
 // core/vs_pause_menu.js - Stopping, and everything you might want while stopped
 import { getVolume, setVolume } from './vs_prefs.js';
+import { fullscreenSupport, isFullscreen, toggleFullscreen } from './ui/mobile_fullscreen.js';
 
 /**
  * The in-match menu: pause, volume, rematch, leave.
@@ -173,6 +174,28 @@ export class VSPauseMenu {
 
         row.appendChild(this.button('Resume', 'resume', () => this.close()));
 
+        // Fullscreen belongs in a menu, not only behind a gesture.
+        //
+        // The long press still works and is quicker, but a gesture nobody is
+        // told about is a gesture nobody uses - which is what the players
+        // reported. A menu is where someone looks when they want to change how
+        // the game is set up, so that is where the switch lives; the gesture
+        // becomes the shortcut it should always have been.
+        //
+        // Offered only where it can actually be delivered: on an iPhone there
+        // is no fullscreen to toggle, and a button that does nothing is worse
+        // than no button (see fullscreenSupport).
+        if (fullscreenSupport() === 'api') {
+            const fs = this.button(
+                isFullscreen() ? 'Quitter plein écran' : 'Plein écran',
+                'fullscreen',
+                () => toggleFullscreen().then(() => {
+                    fs.textContent = isFullscreen() ? 'Quitter plein écran' : 'Plein écran';
+                })
+            );
+            row.appendChild(fs);
+        }
+
         if (this.actions.onRestart) {
             const label = this.canFreeze ? 'Restart' : 'Back to Lobby';
             row.appendChild(this.button(label, 'restart', () => {
@@ -285,6 +308,10 @@ export class VSPauseMenu {
         .vs-pause-restart:hover { background-color: #2980b9; }
         .vs-pause-quit { background-color: #95a5a6; }
         .vs-pause-quit:hover { background-color: #7f8c8d; }
+        /* Violet, like the spirit: a display setting rather than one of the
+           three green/blue/grey verbs that decide what happens to the match. */
+        .vs-pause-fullscreen { background-color: #8e44ad; }
+        .vs-pause-fullscreen:hover { background-color: #71368a; }
         .vs-pause-hint {
             margin-top: 20px;
             font-size: 8px;

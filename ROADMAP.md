@@ -764,12 +764,24 @@ referee in JavaScript, so half of it exists.
 
 ## 📌 Backlog (demande par Jacques, pas encore commence)
 
-### Plein ecran mobile - a revoir
-- [ ] Le geste actuel n'est pas decouvrable: rien a l'ecran ne dit qu'un appui
-      long bascule le plein ecran, donc personne ne le trouve
-- [ ] Chercher les bonnes pratiques (iOS Safari n'a pas l'API Fullscreen sur
-      iPhone - seul `apple-mobile-web-app-capable` en raccourci ecran d'accueil
-      donne un vrai plein ecran; Android l'a)
+### Plein ecran mobile - refait
+- [x] `fullscreenSupport()` distingue trois cas au lieu d'un: `installed`
+      (ouvert depuis l'ecran d'accueil, rien a faire), `api` (Android, iPad,
+      bureau) et `homescreen` (iPhone, ou Safari n'expose aucune API Fullscreen
+      hors video). L'ancien code renvoyait un `false` muet sur iPhone, donc le
+      geste paraissait casse plutot qu'indisponible - c'etait tout le "on ne
+      sait pas comment faire"
+- [x] Sur iPhone: une carte explicative, une seule fois, avec les trois etapes
+      reelles (Partager -> Sur l'ecran d'accueil -> ouvrir depuis l'icone).
+      Memorisee dans localStorage, pas de rappel
+- [x] `manifest.json` (`display: fullscreen`, `orientation: landscape`) +
+      icones generees depuis la feuille de sprites. C'est lui qui fait qu'une
+      icone d'ecran d'accueil s'ouvre vraiment sans barres et en paysage, sur
+      Android comme sur iOS
+- [x] Verrouillage en paysage (`screen.orientation.lock`) apres etre entre en
+      plein ecran, la ou c'est permis - un refus est une reponse, pas une panne
+- [x] Bouton visible dans le menu pause VS, affiche seulement la ou il peut
+      agir. L'appui long reste, comme raccourci plutot que comme seul acces
 
 ### Zoom du navigateur - regle
 - [x] `core/ui/mobile_viewport.js`: `touch-action` (`manipulation` sur la page,

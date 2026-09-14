@@ -17,6 +17,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
+    <!-- Ajoute a l'ecran d'accueil, le jeu s'ouvre sans barres et en paysage:
+         c'est le manifeste qui le dit (display: fullscreen, orientation:
+         landscape), et c'est la SEULE facon d'avoir un vrai plein ecran sur
+         iPhone, ou Safari n'expose aucune API Fullscreen hors video. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/assets/icon-180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png" />
+
     <!-- Cache Control - Force browser to reload JS files on every load (dev mode) -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
