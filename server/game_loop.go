@@ -7,20 +7,25 @@ import (
 
 // Game loop constants.
 //
-// 30Hz rather than the 20 this ran at for a long time. The rate is one of the
-// terms in what a player actually sees: a state is worth broadcasting the
-// moment it changes, and at 20Hz it waited 25ms on average for the next tick
-// before leaving at all. Measured between two live clients, going to 30Hz took
-// the perceived delay from 77ms to 49ms.
+// 50Hz, arrived at in two steps from the 20 this ran at for a long time. The
+// rate is one of the terms in what a player actually sees: a state is worth
+// broadcasting the moment it changes, and at 20Hz it waited 25ms on average for
+// the next tick before leaving at all. Measured between two live clients, the
+// perceived delay went 77ms at 20Hz, 50ms at 30Hz, 29ms at 50Hz.
 //
-// The cost turned out to be near zero - 2.1% of a core with four players
-// connected and moving, against 1.7% at 20Hz, because the work is in the
-// connections rather than in the loop. The client side must stay in step:
-// GameVSSimple.startNetworkSync sends at the same cadence, and
-// interpolation_component.js sizes its buffer from PACKET_INTERVAL.
+// The cost stayed near nothing at every step - 1.7%, 2.1%, 2.4% of a core with
+// four players connected and moving - because the work is in the connections
+// rather than in the loop. That is a developer machine, though, and Render's
+// free instance is capped at a tenth of a core, which is the one thing this
+// change cannot prove locally.
+//
+// It does not need to be proven in advance: a client measures the interval it
+// actually receives (interpolation_component.js observeInterval). If this
+// instance cannot hold 50Hz, the clients report the rate it does manage, and
+// the number to go back to is theirs rather than a guess.
 const (
-	TICK_RATE     = 30                    // 30 ticks per second
-	TICK_INTERVAL = 33 * time.Millisecond // ~33ms per tick
+	TICK_RATE     = 50                    // 50 ticks per second
+	TICK_INTERVAL = 20 * time.Millisecond // 20ms per tick
 )
 
 // StartGameLoop starts the authoritative server game loop

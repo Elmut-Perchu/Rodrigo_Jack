@@ -18,12 +18,13 @@ const RESPAWN_GRACE = 250;
  * together than one broadcast and a buffer shallower than that has nothing to
  * interpolate between.
  *
- * This is only the opening guess. It used to be a hard-coded 50 that had to be
- * kept in step by hand with TICK_INTERVAL in server/game_loop.go - a coupling
- * that broke the first time the two shipped separately, because the client is
- * on a static host and the server is not: a client believing in 33ms
- * broadcasts talked to a server still sending every 50ms for as long as the
- * older binary was up.
+ * This is only the opening guess, and being wrong about it costs a quarter of a
+ * second at the start of a match and nothing after. It used to be a hard-coded
+ * constant that had to be kept in step by hand with TICK_INTERVAL in
+ * server/game_loop.go - a coupling that broke the first time the two shipped
+ * separately, because the client is on a static host and the server is not: a
+ * client believing in 33ms broadcasts talked to a server still sending every
+ * 50ms for as long as the older binary was up.
  *
  * So it is measured instead, in observeInterval(), from the gaps between
  * consecutive state stamps - stamps written when the server sends rather than
@@ -33,7 +34,7 @@ const RESPAWN_GRACE = 250;
  * 50Hz server, which it does within a quarter of a second of the first states
  * landing.
  */
-const ASSUMED_INTERVAL = 33;
+const ASSUMED_INTERVAL = 20;
 
 /**
  * Sanity bounds on the measured interval, so one malformed batch of timestamps
