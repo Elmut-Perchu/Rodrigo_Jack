@@ -41,7 +41,9 @@
         .vs-game-wrapper {
             position: relative;
             width: 100vw;
+            /* See style.css: dvh follows the bars, vh is the fallback. */
             height: 100vh;
+            height: 100dvh;
         }
 
         .container {
@@ -680,6 +682,7 @@
         import { IS_TOUCH } from '../core/mobile.js';
         import { TouchControls } from '../core/ui/touch_controls.js';
         import { enableMobileFullscreen } from '../core/ui/mobile_fullscreen.js';
+        import { lockViewport } from '../core/ui/mobile_viewport.js';
 
         // Set before anything is drawn so the touch stylesheet above applies
         // to the loading screen too, rather than snapping into place once the
@@ -736,6 +739,7 @@
          */
         function mountTouchControls() {
             if (!IS_TOUCH || touchControls) return;
+            lockViewport();
             touchControls = new TouchControls({ mode: 'vs' }).mount();
             touchControls.setVisible(true);
             enableMobileFullscreen();

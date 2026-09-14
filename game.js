@@ -33,6 +33,7 @@ import { ArrowPickupSystem } from './core/systems/arrow_pickup_system.js';
 import { IS_TOUCH } from './core/mobile.js';
 import { TouchControls } from './core/ui/touch_controls.js';
 import { enableMobileFullscreen } from './core/ui/mobile_fullscreen.js';
+import { lockViewport } from './core/ui/mobile_viewport.js';
 
 export class Game {
     constructor(container, mode = 'adventure') {
@@ -84,6 +85,10 @@ export class Game {
         this.touchControls = null;
         if (IS_TOUCH && this.mode !== 'vs') {
             document.body.classList.add('is-touch');
+            // Before the controls go up, not after: the first thing a player
+            // does is touch the screen, and the browser's own gestures have to
+            // already be out of the way when they do.
+            lockViewport();
             this.touchControls = new TouchControls({ mode: 'adventure' }).mount();
             enableMobileFullscreen();
         }

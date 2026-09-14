@@ -2,7 +2,12 @@ body {
     margin: 0;
     padding: 0;
     width: 100vw;
+    /* 100vh on a phone is the height with the browser's bars HIDDEN, so while
+       they are showing the page is taller than the screen and the bottom of
+       the game sits under them. dvh follows the viewport that is actually
+       there. The vh line stays as the fallback for browsers without dvh. */
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     display: flex;
     justify-content: center;
@@ -15,6 +20,7 @@ body {
     overflow: hidden;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     position: relative;
     background-color: #000;
     box-sizing: border-box;

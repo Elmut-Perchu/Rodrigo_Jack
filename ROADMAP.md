@@ -771,6 +771,24 @@ referee in JavaScript, so half of it exists.
       iPhone - seul `apple-mobile-web-app-capable` en raccourci ecran d'accueil
       donne un vrai plein ecran; Android l'a)
 
+### Zoom du navigateur - regle
+- [x] `core/ui/mobile_viewport.js`: `touch-action` (`manipulation` sur la page,
+      `none` sur les surfaces jouees), refus des `gesture*` WebKit, annulation
+      du seul second tap d'un double-tap, `-webkit-touch-callout: none`,
+      `user-select: none`, `overscroll-behavior: none`
+- [x] **Le constat central**: `user-scalable=no` et `maximum-scale=1.0` sont
+      ignores par Safari iOS depuis iOS 10 (decision d'accessibilite d'Apple).
+      Les deux pages les portaient deja - sur iPhone, elles ne protegeaient rien
+- [x] Effet de bord repare au passage: sans `-webkit-touch-callout: none`, un
+      appui long ouvre le menu contextuel iOS, qui se battait contre le geste
+      d'appui long du plein ecran
+- [x] **Volontairement pas fait**: annuler les `touchmove` multi-doigts, que la
+      recette habituelle recommande. Deux doigts, ici, c'est la facon normale de
+      jouer. Verifie: deplacement de 76px au joystick pendant que l'autre pouce
+      declenche `attack3`, et double saut a 129px contre 67 en simple
+- [x] Hauteurs en `100dvh` avec `100vh` en repli: `100vh` vaut la hauteur
+      barres masquees, donc le bas du jeu passait sous les barres
+
 ### Croix directionnelle au lieu des quatre boutons
 - [ ] Remplacer les quatre boutons ronds de gauche par une croix en X,
       translucide, decoupee en quatre zones cliquables (haut, bas, gauche,
