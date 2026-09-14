@@ -676,6 +676,34 @@ my opponent late" is delay, and it is mostly self-inflicted.
 - **Non retenu pour l'instant**: 50Hz, mesure a 29ms mais non prouve sur le
   plan gratuit de Render (plafond 0,1 coeur) et 2,5x plus de messages
 
+### Le client mesure la cadence au lieu de la supposer
+- [x] `observeInterval()`: la profondeur plancher vient de la mediane des
+      ecarts entre estampilles, plus d'une constante a tenir en phase a la main
+- [x] Mediane et non minimum: les estampilles passent par `serverToLocal`, dont
+      le decalage bouge encore, et ce mouvement tombe dans l'ecart. Le minimum
+      ne collecte que les moments ou il descendait - 43ms lus pour un serveur a
+      50 - et sous-estimer le plancher est la direction qui coute une saccade
+- [x] Verifie: le meme client lit 50ms contre un serveur 20Hz (tampon 52ms,
+      retard 92ms) et 33ms contre un 30Hz (tampon 34ms, retard 54ms), apprend
+      en moins de 250ms, et resiste a 20% de perte de paquets
+
+**Pourquoi c'etait necessaire tout de suite**: le frontend est sur Vercel et le
+serveur sur Render, donc les deux ne peuvent pas atterrir ensemble. Le premier
+deploiement a 30Hz a livre un client qui croyait a des diffusions toutes les
+33ms a un serveur qui envoyait encore toutes les 50. Le couplage etait le bug.
+
+### 🚨 Deploiement Render casse - action requise cote Jacques
+- [ ] **Les deux secrets du depot ne sont pas configures.** `gh secret list` est
+      vide, et `deploy-render.yml` sort en succes quand le hook est absent, donc
+      le workflow est vert depuis toujours sans rien declencher
+- [ ] Render sert `b246880` (8 septembre). Tout changement serveur depuis cette
+      date n'est jamais parti
+- [ ] A faire: Render -> chaque service -> Settings -> Deploy Hook, copier
+      l'URL, puis GitHub -> Settings -> Secrets -> Actions:
+      `RENDER_VS_SERVER_HOOK` et `RENDER_SCORE_API_HOOK`
+- [ ] Ensuite relancer le workflow a la main (onglet Actions -> Deploy to
+      Render -> Run workflow) et verifier `/health`
+
 **Correction d'une estimation donnee plus tot**: j'avais annonce que le WiFi
 local ferait passer de 215ms a une trentaine. Faux. Retirer le serveur ne
 retire que les deux traversees reseau (~47ms); l'intervalle d'envoi, le tick et

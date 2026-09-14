@@ -14,29 +14,51 @@ import { wrapValue, shortestDelta } from '../../constants/vs_wrap_constants.js';
 const RESPAWN_GRACE = 250;
 
 /**
- * The gap the buffer always has to span: the server broadcasts every 33ms
- * (TICK_INTERVAL, server/game_loop.go), so two states are never closer than
- * that and a buffer shallower than one of them has nothing to interpolate
- * between. Change it there and here together.
+ * The gap the buffer always has to span, because two states are never closer
+ * together than one broadcast and a buffer shallower than that has nothing to
+ * interpolate between.
+ *
+ * This is only the opening guess. It used to be a hard-coded 50 that had to be
+ * kept in step by hand with TICK_INTERVAL in server/game_loop.go - a coupling
+ * that broke the first time the two shipped separately, because the client is
+ * on a static host and the server is not: a client believing in 33ms
+ * broadcasts talked to a server still sending every 50ms for as long as the
+ * older binary was up.
+ *
+ * So it is measured instead, in observeInterval(), from the gaps between
+ * consecutive state stamps - stamps written when the server sends rather than
+ * when we receive, so what they space out is the server's own cadence. Read
+ * with a median, for the reason given there. Nothing has to be coordinated any
+ * more: a client works out for itself whether it is talking to a 20Hz, 30Hz or
+ * 50Hz server, which it does within a quarter of a second of the first states
+ * landing.
  */
-const PACKET_INTERVAL = 33;
+const ASSUMED_INTERVAL = 33;
 
 /**
- * The floor and the ceiling on how far behind an opponent is drawn.
- *
- * The floor is exactly one broadcast, and derived rather than written down so
- * the two cannot drift apart: the clock always needs a state ahead of where it
- * is drawing to interpolate toward, and below one broadcast apart there is no
- * guarantee of one, so the fighter stutters. Sweeping says 20ms survives a
- * clean link at this broadcast rate, so the floor carries headroom - and it
- * needs to, because the sweep measures uniform jitter while real links arrive
- * in bursts.
- *
- * The ceiling is where the cure has become the disease - past a quarter second
- * the delay hurts more than the jitter it is hiding, and a connection needing
- * more than that is not going to be rescued by waiting.
+ * Sanity bounds on the measured interval, so one malformed batch of timestamps
+ * cannot drive the floor to nonsense in either direction.
  */
-const MIN_DELAY = PACKET_INTERVAL;
+const MIN_INTERVAL = 15;
+const MAX_INTERVAL = 120;
+
+/**
+ * How many recent gaps the interval is read from. Half a second of them, which
+ * is enough for the middle value to be the real tick and short enough to
+ * notice a server that changed rate.
+ */
+const INTERVAL_SAMPLES = 15;
+
+/**
+ * The ceiling on how far behind an opponent is drawn: where the cure has become
+ * the disease. Past a quarter second the delay hurts more than the jitter it is
+ * hiding, and a connection needing more than that is not going to be rescued by
+ * waiting.
+ *
+ * There is no matching constant for the floor. The floor is one broadcast, and
+ * what one broadcast is depends on the server this client happens to be talking
+ * to - so it comes from the measurement rather than from here.
+ */
 const MAX_DELAY = 250;
 
 /**
@@ -98,6 +120,12 @@ export class Interpolation extends Component {
         // settles near the floor and one on a bad one still gets what it
         // needs.
         this.bufferDelay = 120;
+
+        // The server's broadcast interval, as measured off the state stamps.
+        // Starts as a guess and is corrected within two states of a match
+        // beginning (see observeInterval).
+        this.broadcastInterval = ASSUMED_INTERVAL;
+        this.gaps = [];
 
         // What the connection has recently demanded - a peak that decays, so
         // it is sized to the worst of the last few seconds rather than to the
@@ -169,13 +197,15 @@ export class Interpolation extends Component {
         // a state that turns up out of order is the loudest evidence of an
         // uneven link there is, and throwing it away would be discarding the
         // reading along with the state.
-        this.require(PACKET_INTERVAL + Math.max(0, Date.now() - timestamp) * JITTER_MARGIN);
+        this.require(this.broadcastInterval + Math.max(0, Date.now() - timestamp) * JITTER_MARGIN);
 
         // getInterpolatedPosition scans the buffer expecting it to run in
         // time order. A state stamped no later than the one already at the
         // end would break that scan, and it has nothing new to say anyway.
         const newest = this.buffer[this.buffer.length - 1];
         if (newest && timestamp <= newest.timestamp) return;
+
+        if (newest) this.observeInterval(timestamp - newest.timestamp);
 
         this.buffer.push({
             x: state.x,
@@ -207,9 +237,42 @@ export class Interpolation extends Component {
         // the rest of the match.
         this.neededDelay = Math.max(delay, this.neededDelay * PEAK_DECAY);
 
-        const target = Math.max(MIN_DELAY, Math.min(MAX_DELAY, this.neededDelay));
+        const target = Math.max(this.broadcastInterval, Math.min(MAX_DELAY, this.neededDelay));
         const rate = target > this.bufferDelay ? GROW_RATE : SHRINK_RATE;
         this.bufferDelay += (target - this.bufferDelay) * rate;
+    }
+
+    /**
+     * Learns how often this server broadcasts, from the stamps it writes.
+     *
+     * The middle of the recent gaps, not the smallest. The smallest looks like
+     * the obvious answer - a state is stamped on the way out, so consecutive
+     * stamps ought to sit exactly one tick apart and anything wider ought to be
+     * a broadcast that went missing. That is wrong in practice, and measurably
+     * so: by the time a stamp reaches addState it has been through
+     * game_vs_simple.serverToLocal, whose own offset estimate is still moving,
+     * and that movement lands inside the gap. A minimum collects the runs where
+     * it moved downward and nothing else, so it reads low - 43ms for a server
+     * ticking at 50 - and reading the floor low is the one direction that
+     * costs a stutter.
+     *
+     * A median has no such lean. It also survives losses without help: a
+     * dropped broadcast doubles one gap, and doubling a minority of the sample
+     * does not move the middle of it.
+     *
+     * @param gap  milliseconds between this state's stamp and the previous one
+     */
+    observeInterval(gap) {
+        if (!(gap > 0)) return;
+
+        this.gaps.push(Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, gap)));
+        if (this.gaps.length > INTERVAL_SAMPLES) this.gaps.shift();
+
+        // Two gaps are not a distribution; wait for a few before believing them.
+        if (this.gaps.length < 3) return;
+
+        const sorted = [...this.gaps].sort((a, b) => a - b);
+        this.broadcastInterval = sorted[sorted.length >> 1];
     }
 
     /**
