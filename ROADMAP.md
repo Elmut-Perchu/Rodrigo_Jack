@@ -673,8 +673,12 @@ my opponent late" is delay, and it is mostly self-inflicted.
       strictement. La marge de 0,5 garde sa reserve partout
 - **Mesure**: retard percu **77ms -> 50ms** (3 essais: 51/49/49). CPU serveur
   3,2% avec quatre joueurs connectes et en mouvement, RSS 15 Mo
-- **Non retenu pour l'instant**: 50Hz, mesure a 29ms mais non prouve sur le
-  plan gratuit de Render (plafond 0,1 coeur) et 2,5x plus de messages
+- [x] **50Hz retenu ensuite** (14 septembre). Le doute portait sur le plafond a
+      0,1 coeur du plan gratuit; il est leve par la mesure et non par un pari,
+      puisque le client lit la cadence qu'il recoit vraiment. En production,
+      quatre joueurs connectes et en mouvement, les trois adversaires lisent
+      **20ms**, stable sur 21 secondes: l'instance tient le rythme
+- **Production mesuree**: 87ms a 30Hz -> **73ms a 50Hz** (69/71/80)
 
 ### Le client mesure la cadence au lieu de la supposer
 - [x] `observeInterval()`: la profondeur plancher vient de la mediane des
