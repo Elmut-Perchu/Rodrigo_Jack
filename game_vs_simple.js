@@ -2058,10 +2058,17 @@ export class GameVSSimple {
         });
     }
 
-    /** Start streaming local state at 20Hz. */
+    /**
+     * Streams the local fighter's state at the server's own tick rate.
+     *
+     * The two have to agree. Sending slower than the server ticks gives it
+     * nothing new to broadcast on some ticks; sending faster just discards the
+     * surplus. 33ms matches TICK_INTERVAL in server/game_loop.go, and the
+     * average wait before a change leaves this machine is half of it.
+     */
     startNetworkSync() {
         if (this.syncInterval) clearInterval(this.syncInterval);
-        this.syncInterval = setInterval(() => this.sendPlayerState(), 50);
+        this.syncInterval = setInterval(() => this.sendPlayerState(), 33);
     }
 
     cleanup() {

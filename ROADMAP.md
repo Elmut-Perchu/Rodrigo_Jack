@@ -662,6 +662,27 @@ my opponent late" is delay, and it is mostly self-inflicted.
       a 2s freeze walked the delay to the ceiling and held it there. The
       information is already in the arrival measurement
 
+
+### Cadence (tick serveur et flux client)
+- [x] `server/game_loop.go` 20Hz -> 30Hz, `game_vs_simple.startNetworkSync`
+      50ms -> 33ms, `PACKET_INTERVAL` suit - les trois doivent rester en phase
+- [x] `MIN_DELAY` derive de `PACKET_INTERVAL` plutot qu'ecrit en dur, pour que
+      les deux ne puissent plus diverger
+- [x] Balayage refait a 33ms de diffusion: le besoin de tampon baisse ou reste
+      egal a chaque niveau de gigue, donc raccourcir l'intervalle aide
+      strictement. La marge de 0,5 garde sa reserve partout
+- **Mesure**: retard percu **77ms -> 50ms** (3 essais: 51/49/49). CPU serveur
+  3,2% avec quatre joueurs connectes et en mouvement, RSS 15 Mo
+- **Non retenu pour l'instant**: 50Hz, mesure a 29ms mais non prouve sur le
+  plan gratuit de Render (plafond 0,1 coeur) et 2,5x plus de messages
+
+**Correction d'une estimation donnee plus tot**: j'avais annonce que le WiFi
+local ferait passer de 215ms a une trentaine. Faux. Retirer le serveur ne
+retire que les deux traversees reseau (~47ms); l'intervalle d'envoi, le tick et
+le tampon restent, hote de poche ou pas. C'est ce qui a fait preferer la
+cadence au projet WebRTC: 30Hz reprend 27ms sur **toutes** les connexions, y
+compris a distance, pour deux constantes.
+
 **Measured** (two live clients, real Go server, localhost): perceived delay
 **138ms -> 77ms**. Smoothness identical at every jitter level from 0 to 150ms
 (0.11% -> 0.50% irregular steps, same both sides). Adventure mode byte-for-byte

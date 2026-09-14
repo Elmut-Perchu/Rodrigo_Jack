@@ -14,25 +14,29 @@ import { wrapValue, shortestDelta } from '../../constants/vs_wrap_constants.js';
 const RESPAWN_GRACE = 250;
 
 /**
- * The gap the buffer always has to span: the server broadcasts every 50ms
+ * The gap the buffer always has to span: the server broadcasts every 33ms
  * (TICK_INTERVAL, server/game_loop.go), so two states are never closer than
  * that and a buffer shallower than one of them has nothing to interpolate
- * between.
+ * between. Change it there and here together.
  */
-const PACKET_INTERVAL = 50;
+const PACKET_INTERVAL = 33;
 
 /**
  * The floor and the ceiling on how far behind an opponent is drawn.
  *
- * The floor is exactly one broadcast: the clock always needs a state ahead of
- * where it is drawing to interpolate toward, and below one broadcast apart
- * there is no guarantee of one, so the fighter stutters. The sweep below says
- * 40ms survives a clean link, but that is measuring uniform jitter - real
- * links arrive in bursts, and the extra 10ms is what covers the difference. The ceiling is where the cure has become the disease - past a
- * quarter second the delay hurts more than the jitter it is hiding, and a
- * connection needing more than that is not going to be rescued by waiting.
+ * The floor is exactly one broadcast, and derived rather than written down so
+ * the two cannot drift apart: the clock always needs a state ahead of where it
+ * is drawing to interpolate toward, and below one broadcast apart there is no
+ * guarantee of one, so the fighter stutters. Sweeping says 20ms survives a
+ * clean link at this broadcast rate, so the floor carries headroom - and it
+ * needs to, because the sweep measures uniform jitter while real links arrive
+ * in bursts.
+ *
+ * The ceiling is where the cure has become the disease - past a quarter second
+ * the delay hurts more than the jitter it is hiding, and a connection needing
+ * more than that is not going to be rescued by waiting.
  */
-const MIN_DELAY = 50;
+const MIN_DELAY = PACKET_INTERVAL;
 const MAX_DELAY = 250;
 
 /**
@@ -41,15 +45,16 @@ const MAX_DELAY = 250;
  * Not one-for-one, and that is the whole finding. The playout clock below
  * already absorbs unevenness by running up to 15% fast or slow, so the buffer
  * is only asked to cover what the slew cannot. Sweeping fixed depths against
- * known jitter says what is actually needed:
+ * known jitter says what is actually needed, at a 33ms broadcast interval:
  *
- *     gigue    0ms -> 40ms      gigue   80ms ->  60ms
- *     gigue   30ms -> 50ms      gigue  150ms -> 100ms
+ *     gigue    0ms -> 20ms      gigue   80ms ->  60ms
+ *     gigue   30ms -> 30ms      gigue  120ms ->  80ms
+ *     gigue   50ms -> 50ms      gigue  150ms -> 100ms
  *
- * which is a slope near 0.4, not the 1.0 the naive reading of "cover the
- * jitter" suggests. Half is that slope with room to spare, and it keeps the
- * worst case at roughly the 120ms this used to charge everyone - so no
- * connection ends up worse off than before, and good ones end up far better.
+ * which is a slope near 0.5, not the 1.0 the naive reading of "cover the
+ * jitter" suggests. That slope with the floor underneath it clears every row
+ * above with room to spare, and still lands under the flat 120ms this used to
+ * charge everyone even on the worst link measured.
  */
 const JITTER_MARGIN = 0.5;
 
@@ -78,8 +83,8 @@ export class Interpolation extends Component {
         this.buffer = []; // State buffer for interpolation
 
         // How far behind the newest state the fighter is drawn - the budget
-        // for the network being uneven. States leave the server every 50ms
-        // but do not arrive every 50ms.
+        // for the network being uneven. States leave the server every 33ms
+        // but do not arrive every 33ms.
         //
         // This used to be a flat 120ms for everyone, which is the wrong shape
         // of answer: it is a guess at the worst connection anybody might have,
