@@ -762,6 +762,38 @@ referee in JavaScript, so half of it exists.
 
 ---
 
+## ⏸️ Pause automatique quand un joueur quitte l'ecran
+
+**Le symptome**: en VS, un ecran qui se met en veille, un telephone qu'on
+tourne, une notification qu'on lit - et au retour "on n'est plus maintenu au
+meme endroit".
+
+**La cause**: un onglet en arriere-plan ne recoit plus `requestAnimationFrame`
+et voit ses `setInterval` etrangles a ~1 tick par minute. Toute la boucle
+s'arrete: plus de physique, plus d'entrees lues, plus d'etat envoye. Le serveur
+ne le savait pas, donc il continuait a rediffuser la derniere position - le
+joueur devenait une statue, et une statue qu'on pouvait encore abattre.
+
+- [x] `server/away.go`: `player_away` / `player_back`, `Room.Paused` derive de
+      qui est absent, diffusion de `match_paused` / `match_resumed`
+- [x] Le gel lui-meme reutilise `GameVSSimple.isPaused`, qui tenait deja
+      l'horloge immobile - la reprise ne rend pas la duree de la pause a la
+      physique d'un coup
+- [x] Combat refuse pendant la pause (`combat_vs.go`, `parry.go`, l'attaque
+      dans `player.go`). Verifie: six coups envoyes a la main pendant l'absence,
+      la vie de la victime ne bouge pas
+- [x] Garde-fou de 45s: un joueur qui ne revient jamais ne fige pas les autres
+      indefiniment. Il reste marque absent plutot que reintegre en silence
+- [x] `parry.go` lit `r.Paused` directement et non `isPaused()`: il detient deja
+      le mutex, qui n'est pas reentrant
+- [x] Le rideau nomme qui manque. Une partie qui s'arrete sans rien dire se lit
+      comme un plantage, et le premier reflexe face a un plantage est de
+      recharger - la seule action qui perdrait vraiment la partie
+- [x] Vaut aussi contre l'ordinateur, sans serveur: une partie jouee ecran
+      eteint est deja perdue quand on la regarde a nouveau
+
+---
+
 ## 📌 Backlog (demande par Jacques, pas encore commence)
 
 ### Plein ecran mobile - refait

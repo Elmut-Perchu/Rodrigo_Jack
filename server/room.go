@@ -31,6 +31,11 @@ type Room struct {
 	Arrows             map[string]*ArenaArrow   `json:"-"` // Arrows lying in the arena (see combat_vs.go)
 	Spectres           map[string]string        `json:"-"` // Spirit id -> caster id (see spectre.go)
 	pendingSwings      map[string]*PendingSwing // Sword blows inside their parry window (see parry.go)
+	// Held because somebody is not looking at their screen (see away.go).
+	// Distinct from IsGameActive, which says whether a match exists at all.
+	Paused    bool `json:"paused"`
+	awayTimer *time.Timer
+
 	// Game loop fields
 	currentTick  uint64        // Server tick counter
 	stopGameLoop chan struct{} // Channel to stop game loop
@@ -200,6 +205,14 @@ func (r *Room) RemovePlayer(player *Player) {
 	// Reassign host if necessary
 	if player.IsHost {
 		r.reassignHost()
+	}
+
+	// Somebody who left for good must not keep the room paused on their
+	// behalf: they are out of r.Players by now, so refreshing simply drops
+	// their absence and lets the others carry on (see away.go).
+	if player.Away {
+		player.Away = false
+		r.refreshPauseLocked()
 	}
 
 	// Broadcast player_left to remaining players

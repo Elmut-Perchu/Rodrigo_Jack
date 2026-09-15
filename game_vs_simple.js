@@ -21,6 +21,7 @@ import { VSArrow } from './core/systems_vs/vs_arrow_system.js';
 import { VSAudio } from './core/systems_vs/vs_audio_system.js';
 import { VSBot } from './core/systems_vs/vs_bot_system.js';
 import { VSLocalArbiter } from './core/systems_vs/vs_local_arbiter.js';
+import { watchAway, handleMatchPaused, handleMatchResumed } from './core/systems_vs/vs_away_watch.js';
 import { spawnSparks } from './core/systems_vs/vs_sparks.js';
 import { createArrow } from './create/arrow_create.js';
 import { createBot } from './create/bot_create.js';
@@ -458,6 +459,15 @@ export class GameVSSimple {
             case 'match_start':
                 console.log('🎮 [GameVSSimple] MATCH START');
                 this.matchOver = false;
+                break;
+
+            // Somebody stopped looking at their screen. Nobody plays until
+            // they are back - see core/systems_vs/vs_away_watch.js.
+            case 'match_paused':
+                handleMatchPaused(this, data);
+                break;
+            case 'match_resumed':
+                handleMatchResumed(this, data);
                 break;
 
             // === Combat ===
@@ -1993,6 +2003,9 @@ export class GameVSSimple {
         this.teams.set(this.localPlayerId, 1);
 
         this.arbiter = new VSLocalArbiter(this);
+        // No server to tell, but the same rule: a match played while the
+        // screen is off is a match already lost by the time it is looked at.
+        this.stopWatchingAway = watchAway(this, { online: false });
         this.arbiter.addFighter(this.localPlayerId, playerName, this.localPlayer);
 
         const count = Math.max(1, Math.min(botCount, 3));
@@ -2025,6 +2038,7 @@ export class GameVSSimple {
     signalGameReady() {
         console.log('🎮 [GameVSSimple] Sending game_ready');
         this.send('game_ready', {});
+        this.stopWatchingAway = watchAway(this, { online: true });
     }
 
     sendPlayerState() {

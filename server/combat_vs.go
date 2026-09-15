@@ -87,7 +87,7 @@ func (p *Player) sendQuiver() {
 // other clients to start simulating it.
 func (p *Player) handleArrowSpawn(msg *Message) {
 	actor := p.actor(msg)
-	if actor == nil || p.Room == nil || !p.Room.IsGameActive || !actor.IsAlive {
+	if actor == nil || p.Room == nil || !p.Room.IsGameActive || p.Room.isPaused() || !actor.IsAlive {
 		return
 	}
 	if actor.isHeld() {
@@ -248,7 +248,7 @@ func (p *Player) handleArrowPickup(msg *Message) {
 // alive, in the same room, and actually near the reported impact point.
 func (p *Player) handleArrowHit(msg *Message) {
 	actor := p.actor(msg)
-	if actor == nil || p.Room == nil || !p.Room.IsGameActive || !actor.IsAlive {
+	if actor == nil || p.Room == nil || !p.Room.IsGameActive || p.Room.isPaused() || !actor.IsAlive {
 		return
 	}
 
@@ -334,7 +334,7 @@ const DeflectTolerance = 170.0
 // deflector must actually be next to it.
 func (p *Player) handleArrowDeflect(msg *Message) {
 	actor := p.actor(msg)
-	if actor == nil || p.Room == nil || !p.Room.IsGameActive || !actor.IsAlive {
+	if actor == nil || p.Room == nil || !p.Room.IsGameActive || p.Room.isPaused() || !actor.IsAlive {
 		return
 	}
 

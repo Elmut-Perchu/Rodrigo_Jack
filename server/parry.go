@@ -100,7 +100,11 @@ func (r *Room) resolveSwing(attackerID string) {
 	delete(r.pendingSwings, attackerID)
 	r.mu.Unlock()
 
-	if !r.IsGameActive || !swing.Attacker.IsAlive {
+	// r.Paused read directly: resolveSwing already holds r.mu, and isPaused()
+	// would take the read lock again on a mutex that is not reentrant.
+	// A blow whose parry window straddled the pause is dropped rather than
+	// landed - the defender was not watching for part of it.
+	if !r.IsGameActive || r.Paused || !swing.Attacker.IsAlive {
 		return
 	}
 

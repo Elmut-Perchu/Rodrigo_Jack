@@ -30,6 +30,11 @@ type Player struct {
 	// 0 never occurs once a room has assigned sides; in free-for-all each
 	// fighter simply gets a team of their own.
 	Team            int         `json:"team"`
+	// Not watching the match: the tab is backgrounded, the phone is locked,
+	// the player is reading a notification. See away.go - while anyone is away
+	// the whole match is held rather than fought around a statue.
+	Away      bool      `json:"away"`
+	AwaySince time.Time `json:"-"`
 	SendChan        chan []byte `json:"-"`
 	LastMessageTime time.Time   `json:"-"`
 	MessageCount    int         `json:"-"`
@@ -179,6 +184,10 @@ func (p *Player) handleMessage(msg *Message) {
 		p.handleLobbyReady(msg)
 	case "game_ready":
 		p.handleGameReady(msg)
+	case "player_away":
+		p.handlePlayerAway(msg)
+	case "player_back":
+		p.handlePlayerBack(msg)
 	case "round_ready":
 		p.handleRoundReady(msg)
 	case "chat_message":
@@ -627,7 +636,7 @@ func (p *Player) handlePlayerState(msg *Message) {
 
 // handlePlayerAttack handles player attack actions
 func (p *Player) handlePlayerAttack(msg *Message) {
-	if p.Room == nil || !p.Room.IsGameActive {
+	if p.Room == nil || !p.Room.IsGameActive || p.Room.isPaused() {
 		return
 	}
 
